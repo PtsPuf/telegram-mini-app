@@ -87,9 +87,6 @@ func startServer(port string) {
 	http.HandleFunc("/", handleWebApp)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
-	// Включаем CORS
-	enableCors()
-
 	// Настраиваем таймауты и размеры
 	server := &http.Server{
 		Addr:           ":" + port,
