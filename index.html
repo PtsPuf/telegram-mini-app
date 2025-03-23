@@ -136,7 +136,11 @@
 
             function showStep(step) {
                 document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
-                document.getElementById(`step${step}`).classList.add('active');
+                if (step === 'result') {
+                    document.getElementById('result').classList.add('active');
+                } else {
+                    document.getElementById(`step${step}`).classList.add('active');
+                }
             }
 
             function selectMode(mode) {
