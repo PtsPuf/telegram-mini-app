@@ -135,34 +135,37 @@ func isValidDate(date string) bool {
 	return err == nil
 }
 
-func getPrediction(state *UserState) (string, error) {
-	log.Printf("Начало генерации предсказания для %s", state.Name)
-	log.Printf("Параметры: Mode=%s, BirthDate=%s, Question=%s", state.Mode, state.BirthDate, state.Question)
-
-	// Формируем промпт для предсказания
-	prompt := fmt.Sprintf(`Ты - Астралия, мудрая гадалка. Сгенерируй предсказание для человека по имени %s, 
-родившегося %s. Вопрос: %s. Сфера: %s.`, state.Name, state.BirthDate, state.Question, state.Mode)
-
-	if state.PartnerName != "" && state.PartnerBirth != "" {
-		prompt += fmt.Sprintf("\nПартнер: %s, родился(ась) %s.", state.PartnerName, state.PartnerBirth)
-	}
-
-	log.Printf("Отправляем запрос к OpenAI с промптом: %s", prompt)
-
-	// Создаем клиент OpenAI
+func getPrediction(question string, cards []string) (string, error) {
 	config := openai.DefaultConfig(OPENROUTER_API_KEY)
 	config.BaseURL = "https://openrouter.ai/api/v1"
 	client := openai.NewClientWithConfig(config)
 
-	// Отправляем запрос
+	// Формируем промпт с учетом вопроса и выбранных карт
+	prompt := fmt.Sprintf(`Ты - опытная гадалка на картах Таро. Пользователь задал вопрос: "%s"
+Выпавшие карты: %s
+
+Сделай подробное предсказание, которое:
+1. Напрямую отвечает на вопрос пользователя
+2. Учитывает значение каждой выбранной карты
+3. Объясняет, как карты связаны с вопросом
+4. Дает конкретные рекомендации
+
+Формат ответа:
+1. Краткое вступление, связывающее вопрос с выбранными картами
+2. Подробное толкование каждой карты в контексте вопроса
+3. Общее предсказание, объединяющее значения всех карт
+4. Конкретные рекомендации для пользователя
+
+Пиши живым, эмоциональным языком, но сохраняй профессионализм.`, question, strings.Join(cards, ", "))
+
 	resp, err := client.CreateChatCompletion(
 		context.Background(),
 		openai.ChatCompletionRequest{
-			Model: "openai/gpt-3.5-turbo",
+			Model: "openai/gpt-4",
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
-					Content: "Ты - Астралия, мудрая гадалка. Твои предсказания должны быть мистическими, но позитивными и вдохновляющими. Используй эмодзи и поэтический язык.",
+					Content: "Ты - опытная гадалка на картах Таро с глубоким пониманием их значений и способностью давать точные и полезные предсказания.",
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,
@@ -170,22 +173,19 @@ func getPrediction(state *UserState) (string, error) {
 				},
 			},
 			Temperature: 0.7,
+			MaxTokens:   1000,
 		},
 	)
 
 	if err != nil {
-		log.Printf("Ошибка при запросе к OpenAI: %v", err)
 		return "", fmt.Errorf("ошибка при получении предсказания: %v", err)
 	}
 
 	if len(resp.Choices) == 0 {
-		log.Printf("Нет ответа от OpenAI")
-		return "", fmt.Errorf("нет ответа от предсказателя")
+		return "", fmt.Errorf("не получен ответ от модели")
 	}
 
-	prediction := resp.Choices[0].Message.Content
-	log.Printf("Получено предсказание: %s", prediction)
-	return prediction, nil
+	return resp.Choices[0].Message.Content, nil
 }
 
 func generateKandinskyImage(prompt string) ([]byte, error) {

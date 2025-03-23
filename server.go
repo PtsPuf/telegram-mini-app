@@ -1,12 +1,9 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/json"
-	"io"
 	"log"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
@@ -40,96 +37,38 @@ func handleWebRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Method != http.MethodPost {
+	if r.Method != "POST" {
 		log.Printf("Неверный метод запроса: %s", r.Method)
 		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
 		return
 	}
 
-	var data struct {
-		Name         string `json:"name"`
-		BirthDate    string `json:"birthDate"`
-		Question     string `json:"question"`
-		Mode         string `json:"mode"`
-		PartnerName  string `json:"partnerName"`
-		PartnerBirth string `json:"partnerBirth"`
-		Step         int    `json:"step"`
+	var request struct {
+		Question string   `json:"question"`
+		Cards    []string `json:"cards"`
 	}
 
-	body, err := io.ReadAll(r.Body)
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		log.Printf("Ошибка декодирования запроса: %v", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Получен POST запрос. Вопрос: %s, Карты: %v", request.Question, request.Cards)
+
+	prediction, err := getPrediction(request.Question, request.Cards)
 	if err != nil {
-		log.Printf("Ошибка чтения тела запроса: %v", err)
-		http.Error(w, "Ошибка чтения запроса", http.StatusBadRequest)
-		return
-	}
-	log.Printf("Тело запроса: %s", string(body))
-
-	if err := json.Unmarshal(body, &data); err != nil {
-		log.Printf("Ошибка декодирования JSON: %v", err)
-		http.Error(w, "Ошибка формата данных", http.StatusBadRequest)
+		log.Printf("Ошибка при получении предсказания: %v", err)
+		http.Error(w, "Error generating prediction", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Получены данные: %+v", data)
-
-	state := &UserState{
-		Name:         data.Name,
-		BirthDate:    data.BirthDate,
-		Question:     data.Question,
-		Mode:         data.Mode,
-		PartnerName:  data.PartnerName,
-		PartnerBirth: data.PartnerBirth,
-		Step:         data.Step,
-	}
-
-	// Получаем предсказание
-	prediction, err := getPrediction(state)
-	if err != nil {
-		log.Printf("Ошибка получения предсказания: %v", err)
-		http.Error(w, "Ошибка получения предсказания", http.StatusInternalServerError)
-		return
-	}
-
-	// Разбиваем предсказание на части
-	parts := strings.Split(prediction, "\n\n***\n\n")
-	if len(parts) != 3 {
-		// Если нет явного разделителя, разбиваем по абзацам
-		paragraphs := strings.Split(prediction, "\n\n")
-		parts = make([]string, 3)
-		for i := 0; i < 3 && i < len(paragraphs); i++ {
-			parts[i] = paragraphs[i]
-		}
-	}
-
-	// Генерируем изображения для каждой части
-	var images []string
-	for _, part := range parts {
-		imgPrompt := generateImagePrompt(part)
-		imgData, err := generateKandinskyImage(imgPrompt)
-		if err != nil {
-			log.Printf("Ошибка генерации изображения: %v", err)
-			continue
-		}
-		// Конвертируем изображение в base64
-		imgBase64 := base64.StdEncoding.EncodeToString(imgData)
-		images = append(images, imgBase64)
-	}
-
-	// Формируем ответ
-	response := struct {
-		Predictions []string `json:"predictions"`
-		Images     []string `json:"images"`
-	}{
-		Predictions: parts,
-		Images:     images,
-	}
+	log.Printf("Предсказание успешно сгенерировано")
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("Ошибка отправки ответа: %v", err)
-		http.Error(w, "Ошибка отправки ответа", http.StatusInternalServerError)
-		return
-	}
+	json.NewEncoder(w).Encode(map[string]string{
+		"prediction": prediction,
+	})
 }
 
 func startServer(port string) {
@@ -150,4 +89,4 @@ func startServer(port string) {
 	if err := server.ListenAndServe(); err != nil {
 		log.Printf("Ошибка запуска сервера: %v", err)
 	}
-} 
+}
