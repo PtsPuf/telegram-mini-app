@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -80,6 +82,7 @@ func handleWebRequest(w http.ResponseWriter, r *http.Request) {
 		Step:         data.Step,
 	}
 
+	// Получаем предсказание
 	prediction, err := getPrediction(state)
 	if err != nil {
 		log.Printf("Ошибка получения предсказания: %v", err)
@@ -87,12 +90,46 @@ func handleWebRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Предсказание успешно сгенерировано для %s", state.Name)
+	// Разбиваем предсказание на части
+	parts := strings.Split(prediction, "\n\n***\n\n")
+	if len(parts) != 3 {
+		// Если нет явного разделителя, разбиваем по абзацам
+		paragraphs := strings.Split(prediction, "\n\n")
+		parts = make([]string, 3)
+		for i := 0; i < 3 && i < len(paragraphs); i++ {
+			parts[i] = paragraphs[i]
+		}
+	}
+
+	// Генерируем изображения для каждой части
+	var images []string
+	for _, part := range parts {
+		imgPrompt := generateImagePrompt(part)
+		imgData, err := generateKandinskyImage(imgPrompt)
+		if err != nil {
+			log.Printf("Ошибка генерации изображения: %v", err)
+			continue
+		}
+		// Конвертируем изображение в base64
+		imgBase64 := base64.StdEncoding.EncodeToString(imgData)
+		images = append(images, imgBase64)
+	}
+
+	// Формируем ответ
+	response := struct {
+		Predictions []string `json:"predictions"`
+		Images      []string `json:"images"`
+	}{
+		Predictions: parts,
+		Images:      images,
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"prediction": prediction,
-	})
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Ошибка отправки ответа: %v", err)
+		http.Error(w, "Ошибка отправки ответа", http.StatusInternalServerError)
+		return
+	}
 }
 
 func startServer(port string) {

@@ -66,6 +66,24 @@
             text-align: left;
             margin: 20px 0;
         }
+        .prediction-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            background-color: var(--tg-theme-secondary-bg-color, #f5f5f5);
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .prediction-section h3 {
+            margin-top: 0;
+            color: var(--tg-theme-button-color, #2481cc);
+        }
+        .tarot-card {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin: 15px 0;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
     </style>
 </head>
 <body>
@@ -231,11 +249,30 @@
                     const data = await response.json();
                     console.log('Получены данные:', data);
                     
-                    if (!data.prediction) {
-                        throw new Error('Нет предсказания в ответе');
+                    if (!data.predictions || data.predictions.length !== 3) {
+                        throw new Error('Некорректный формат предсказания');
                     }
+
+                    // Формируем HTML для предсказания
+                    let predictionHtml = `
+                        <div class="prediction-section">
+                            <h3>🌙 Вступление судьбы</h3>
+                            <p>${data.predictions[0]}</p>
+                            ${data.images[0] ? `<img src="data:image/jpeg;base64,${data.images[0]}" alt="Карта Таро 1" class="tarot-card">` : ''}
+                        </div>
+                        <div class="prediction-section">
+                            <h3>🌟 Путь твоей судьбы</h3>
+                            <p>${data.predictions[1]}</p>
+                            ${data.images[1] ? `<img src="data:image/jpeg;base64,${data.images[1]}" alt="Карта Таро 2" class="tarot-card">` : ''}
+                        </div>
+                        <div class="prediction-section">
+                            <h3>🌀 Размышления о будущем</h3>
+                            <p>${data.predictions[2]}</p>
+                            ${data.images[2] ? `<img src="data:image/jpeg;base64,${data.images[2]}" alt="Карта Таро 3" class="tarot-card">` : ''}
+                        </div>
+                    `;
                     
-                    document.getElementById('prediction').textContent = data.prediction;
+                    document.getElementById('prediction').innerHTML = predictionHtml;
                     showStep('result');
                 } catch (error) {
                     console.error('Ошибка:', error);
