@@ -40,11 +40,6 @@ var (
 )
 
 func init() {
-	// Загружаем переменные окружения из .env файла
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("Ошибка загрузки .env файла")
-	}
-
 	// Получаем значения из переменных окружения
 	OPENROUTER_API_KEY = os.Getenv("OPENROUTER_API_KEY")
 	KANDINSKY_API_KEY = os.Getenv("KANDINSKY_API_KEY")
@@ -76,16 +71,27 @@ type KandinskyStatusResponse struct {
 }
 
 func main() {
-	// Запускаем веб-сервер
-	startServer()
+	// Проверяем наличие переменных окружения
+	if os.Getenv("TELEGRAM_BOT_TOKEN") == "" {
+		// Если переменных нет, пробуем загрузить .env файл
+		if err := godotenv.Load(); err != nil {
+			log.Printf("Ошибка загрузки .env файла: %v", err)
+		}
+	}
 
-	var err error
-	bot, err = tele.NewBot(tele.Settings{
-		Token:  os.Getenv("TELEGRAM_BOT_TOKEN"),
-		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
-	})
+	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
+	if botToken == "" {
+		log.Fatal("TELEGRAM_BOT_TOKEN не установлен")
+	}
+
+	pref := tele.Settings{
+		Token: botToken,
+	}
+
+	bot, err := tele.NewBot(pref)
 	if err != nil {
-		log.Fatalf("Ошибка инициализации бота: %v", err)
+		log.Fatal(err)
+		return
 	}
 
 	bot.Handle("/start", func(c tele.Context) error {
