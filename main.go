@@ -99,139 +99,16 @@ func main() {
 		return
 	}
 
-	bot.Handle("/start", func(c tele.Context) error {
-		userID := c.Sender().ID
-		userStatesMu.Lock()
-		userStates[userID] = &UserState{Step: 0}
-		userStatesMu.Unlock()
-		log.Printf("Старт для userID=%d", userID)
-		welcomeMsg := "🌟 Здравствуй, путник! Я — Астралия ✨, хранительница тайн судьбы. 🌙\n" +
-			"Через дымку времён я помогу тебе заглянуть в будущее. Нажми на кнопку ниже, чтобы начать:"
+	// Получаем порт из переменной окружения или используем значение по умолчанию
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
 
-		// Создаем кнопку для запуска мини-приложения
-		keyboard := &tele.ReplyMarkup{
-			InlineKeyboard: [][]tele.InlineButton{
-				{
-					{
-						Text: "✨ Получить предсказание",
-						WebApp: &tele.WebApp{
-							URL: "https://ptspuf.github.io/telegram-mini-app/",
-						},
-					},
-				},
-			},
-		}
+	// Запускаем веб-сервер
+	go startServer(port)
 
-		return c.Send(welcomeMsg, keyboard)
-	})
-
-	bot.Handle(tele.OnText, func(c tele.Context) error {
-		userID := c.Sender().ID
-		userStatesMu.Lock()
-		state, exists := userStates[userID]
-		if !exists {
-			userStatesMu.Unlock()
-			log.Printf("Нет состояния для userID=%d", userID)
-			return c.Send("🌌 Начни свой путь с команды /start, странник!")
-		}
-		log.Printf("Текст от userID=%d: %s, step=%d", userID, c.Text(), state.Step)
-
-		switch state.Step {
-		case 1:
-			state.Name = c.Text()
-			state.Step = 2
-			userStatesMu.Unlock()
-			return c.Send("✨ Прекрасно, " + state.Name + "! Назови дату своего рождения (например, 15.03.1990):")
-		case 2:
-			if !isValidDate(c.Text()) {
-				userStatesMu.Unlock()
-				return c.Send("🌠 Укажи дату в формате ДД.ММ.ГГГГ, прошу тебя:")
-			}
-			state.BirthDate = c.Text()
-			if state.Mode == "Любовь и отношения" {
-				state.Step = 3
-				userStatesMu.Unlock()
-				return c.Send("💖 Расскажи, как зовут твою избранницу или избранника?")
-			}
-			state.Step = 5
-			userStatesMu.Unlock()
-			return c.Send("🌟 Теперь шепни мне, что тревожит твое сердце или какой вопрос гложет душу:")
-		case 3:
-			state.PartnerName = c.Text()
-			state.Step = 4
-			userStatesMu.Unlock()
-			return c.Send(fmt.Sprintf("💞 %s... Красивое имя! Когда он(а) родился(ась)? (например, 20.05.1992):", state.PartnerName))
-		case 4:
-			if !isValidDate(c.Text()) {
-				userStatesMu.Unlock()
-				return c.Send("🌠 Укажи дату в формате ДД.ММ.ГГГГ, прошу:")
-			}
-			state.PartnerBirth = c.Text()
-			state.Step = 5
-			userStatesMu.Unlock()
-			return c.Send("💖 Теперь поведай, что тревожит твое сердце в этих отношениях:")
-		case 5:
-			state.Question = c.Text()
-			userStatesMu.Unlock()
-			if err := c.Send("🌙 Я заглядываю в магический шар... Подожди немного, судьба раскрывается медленно."); err != nil {
-				log.Printf("Ошибка отправки сообщения ожидания для userID=%d: %v", userID, err)
-				return err
-			}
-			prediction, err := getPrediction(state)
-			if err != nil {
-				log.Printf("Ошибка получения предсказания для userID=%d: %v", userID, err)
-				return c.Send("✨ Туман сгустился... Попробуй позже, странник.")
-			}
-			err = sendPredictionGradually(c, prediction)
-			if err != nil {
-				log.Printf("Ошибка отправки предсказания для userID=%d: %v", userID, err)
-				return err
-			}
-			userStatesMu.Lock()
-			delete(userStates, userID)
-			userStatesMu.Unlock()
-			return c.Send("✨ Чтобы задать новый вопрос, введи /start!")
-		default:
-			userStatesMu.Unlock()
-			log.Printf("Неизвестный шаг %d для userID=%d", state.Step, userID)
-			return c.Send("🌌 Что-то пошло не так... Начни заново с /start!")
-		}
-	})
-
-	bot.Handle(tele.OnCallback, func(c tele.Context) error {
-		userID := c.Sender().ID
-		userStatesMu.Lock()
-		state, exists := userStates[userID]
-		data := strings.TrimSpace(c.Data())
-		log.Printf("Callback received: userID=%d, data='%s', state exists=%v, step=%d", userID, data, exists, state.Step)
-
-		if !exists || state.Step != 0 {
-			log.Printf("Сбрасываем состояние для userID=%d", userID)
-			userStates[userID] = &UserState{Step: 0}
-			userStatesMu.Unlock()
-			return c.Send("🌌 Начни сначала или выбери сферу заново:", modeButtons())
-		}
-
-		switch data {
-		case "love":
-			state.Mode = "Любовь и отношения"
-		case "health":
-			state.Mode = "Здоровье"
-		case "career":
-			state.Mode = "Карьера и деньги"
-		case "decision":
-			state.Mode = "Принятие решений"
-		default:
-			log.Printf("Неизвестный callback: '%s'", data)
-			userStatesMu.Unlock()
-			return c.Send("🌌 Неизвестная сфера... Выбери снова!", modeButtons())
-		}
-		state.Step = 1
-		log.Printf("Установлен режим: %s для userID=%d", state.Mode, userID)
-		userStatesMu.Unlock()
-		return c.Send(fmt.Sprintf("🌟 Ты выбрал сферу: *%s*. Назови свое имя, чтобы звезды заговорили:", state.Mode))
-	})
-
+	// Запускаем бота
 	log.Println("Бот запущен...")
 	bot.Start()
 }

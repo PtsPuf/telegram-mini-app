@@ -82,22 +82,24 @@ func handleWebApp(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func startServer() {
+func startServer(port string) {
 	// Настраиваем маршруты
 	http.HandleFunc("/", handleWebApp)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
-	// Создаем сервер с увеличенным таймаутом
+	// Включаем CORS
+	enableCors()
+
+	// Настраиваем таймауты и размеры
 	server := &http.Server{
-		Addr:           ":8080",
+		Addr:           ":" + port,
 		Handler:        nil,
 		ReadTimeout:    120 * time.Second,
 		WriteTimeout:   120 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 1MB
 	}
 
-	// Запускаем сервер
-	log.Println("Сервер запущен на http://localhost:8080")
+	log.Printf("Сервер запущен на порту %s", port)
 	if err := server.ListenAndServe(); err != nil {
 		log.Printf("Ошибка запуска сервера: %v", err)
 	}
