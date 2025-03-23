@@ -310,7 +310,7 @@
                     case 1:
                         currentState.name = document.getElementById('name').value;
                         if (!currentState.name) {
-                            tg.showAlert('Пожалуйста, введите ваше имя');
+                            alert('Пожалуйста, введите ваше имя');
                             return;
                         }
                         currentState.step = 2;
@@ -319,7 +319,7 @@
                     case 2:
                         currentState.birthDate = document.getElementById('birthDate').value;
                         if (!isValidDate(currentState.birthDate)) {
-                            tg.showAlert('Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ');
+                            alert('Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ');
                             return;
                         }
                         if (currentState.mode === 'Любовь и отношения') {
@@ -333,7 +333,7 @@
                     case 3:
                         currentState.partnerName = document.getElementById('partnerName').value;
                         if (!currentState.partnerName) {
-                            tg.showAlert('Пожалуйста, введите имя партнера');
+                            alert('Пожалуйста, введите имя партнера');
                             return;
                         }
                         currentState.step = 4;
@@ -342,7 +342,7 @@
                     case 4:
                         currentState.partnerBirth = document.getElementById('partnerBirth').value;
                         if (!isValidDate(currentState.partnerBirth)) {
-                            tg.showAlert('Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ');
+                            alert('Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ');
                             return;
                         }
                         currentState.step = 5;
@@ -372,38 +372,66 @@
                 document.querySelector('.loading').classList.add('show');
                 document.querySelector('button').disabled = true;
 
-                try {
-                    const response = await fetch('https://ptspuf.github.io/', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(currentState)
-                    });
+                let retries = 3;
+                while (retries > 0) {
+                    try {
+                        // Создаем контроллер для отмены запроса по таймауту
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 секунд таймаут
 
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        console.error('Server response:', errorText);
-                        throw new Error(`Ошибка сервера: ${response.status} ${errorText}`);
+                        console.log('Отправляем запрос:', currentState);
+                        const response = await fetch('https://telegram-mini-app.onrender.com/', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify(currentState),
+                            signal: controller.signal
+                        });
+
+                        clearTimeout(timeoutId);
+
+                        console.log('Получен ответ:', response.status, response.statusText);
+                        
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            console.error('Server response:', errorText);
+                            throw new Error(`Ошибка сервера: ${response.status} ${response.statusText} ${errorText}`);
+                        }
+
+                        const contentType = response.headers.get('content-type');
+                        if (!contentType || !contentType.includes('application/json')) {
+                            throw new Error(`Неверный тип ответа: ${contentType}`);
+                        }
+
+                        const data = await response.json();
+                        console.log('Получены данные:', data);
+
+                        if (!data.prediction) {
+                            throw new Error('Не получено предсказание от сервера');
+                        }
+
+                        const predictionDiv = document.querySelector('.prediction');
+                        predictionDiv.textContent = data.prediction;
+                        predictionDiv.classList.add('show');
+                        showStep('result');
+                        return; // Успешно получили предсказание
+                    } catch (error) {
+                        console.error('Error:', error);
+                        retries--;
+                        if (retries > 0) {
+                            console.log(`Повторная попытка. Осталось попыток: ${retries}`);
+                            await new Promise(resolve => setTimeout(resolve, 2000)); // Ждем 2 секунды перед повторной попыткой
+                        } else {
+                            alert(`Произошла ошибка при получении предсказания: ${error.message}`);
+                        }
                     }
-
-                    const data = await response.json();
-                    if (!data.prediction) {
-                        throw new Error('Не получено предсказание от сервера');
-                    }
-
-                    const predictionDiv = document.querySelector('.prediction');
-                    predictionDiv.textContent = data.prediction;
-                    predictionDiv.classList.add('show');
-                    showStep('result');
-                } catch (error) {
-                    console.error('Error:', error);
-                    alert(`Произошла ошибка при получении предсказания: ${error.message}`);
-                } finally {
-                    // Скрываем прелоудер
-                    document.querySelector('.loading').classList.remove('show');
-                    document.querySelector('button').disabled = false;
                 }
+
+                // Скрываем прелоудер только если все попытки исчерпаны
+                document.querySelector('.loading').classList.remove('show');
+                document.querySelector('button').disabled = false;
             }
 
             function restart() {
