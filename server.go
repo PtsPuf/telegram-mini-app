@@ -37,12 +37,15 @@ func handleWebApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == "POST" {
+		log.Printf("Получен POST запрос от %s", r.RemoteAddr)
+
 		var state WebAppState
 		if err := json.NewDecoder(r.Body).Decode(&state); err != nil {
 			log.Printf("Ошибка декодирования JSON: %v", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		log.Printf("Получены данные: %+v", state)
 
 		// Сохраняем состояние
 		webAppMu.Lock()
@@ -51,6 +54,7 @@ func handleWebApp(w http.ResponseWriter, r *http.Request) {
 
 		// Если это последний шаг, генерируем предсказание
 		if state.Step == 5 {
+			log.Printf("Начинаем генерацию предсказания для %s", state.Name)
 			prediction, err := getPrediction(&UserState{
 				Name:         state.Name,
 				BirthDate:    state.BirthDate,
@@ -65,6 +69,7 @@ func handleWebApp(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			log.Printf("Предсказание успешно сгенерировано для %s", state.Name)
 
 			// Отправляем предсказание обратно
 			w.Header().Set("Content-Type", "application/json")

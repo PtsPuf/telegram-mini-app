@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/sashabaranov/go-openai"
 	tele "gopkg.in/telebot.v3"
 )
 
@@ -134,87 +136,55 @@ func isValidDate(date string) bool {
 }
 
 func getPrediction(state *UserState) (string, error) {
-	prompt := fmt.Sprintf(`Ты — гадалка Астралия, мастерица карт Таро. Данные пользователя: имя — %s, дата рождения — %s, вопрос — %s. Тема: %s.`,
-		state.Name, state.BirthDate, state.Question, state.Mode)
-	if state.Mode == "Любовь и отношения" {
-		prompt += fmt.Sprintf(` Учти: имя партнера — %s, дата рождения партнера — %s.`, state.PartnerName, state.PartnerBirth)
+	log.Printf("Начало генерации предсказания для %s", state.Name)
+	log.Printf("Параметры: Mode=%s, BirthDate=%s, Question=%s", state.Mode, state.BirthDate, state.Question)
+
+	// Формируем промпт для предсказания
+	prompt := fmt.Sprintf(`Ты - Астралия, мудрая гадалка. Сгенерируй предсказание для человека по имени %s, 
+родившегося %s. Вопрос: %s. Сфера: %s.`, state.Name, state.BirthDate, state.Question, state.Mode)
+
+	if state.PartnerName != "" && state.PartnerBirth != "" {
+		prompt += fmt.Sprintf("\nПартнер: %s, родился(ась) %s.", state.PartnerName, state.PartnerBirth)
 	}
-	prompt += ` Вот полный список карт Таро, из которых ты должна выбирать для расклада (78 карт):
-	Старшие Арканы: The Fool, The Magician, The High Priestess, The Empress, The Emperor, The Hierophant, The Lovers, The Chariot, Strength, The Hermit, Wheel of Fortune, Justice, The Hanged Man, Death, Temperance, The Devil, The Tower, The Star, The Moon, The Sun, Judgement, The World.
-	Жезлы: Ace of Wands, Two of Wands, Three of Wands, Four of Wands, Five of Wands, Six of Wands, Seven of Wands, Eight of Wands, Nine of Wands, Ten of Wands, Page of Wands, Knight of Wands, Queen of Wands, King of Wands.
-	Кубки: Ace of Cups, Two of Cups, Three of Cups, Four of Cups, Five of Cups, Six of Cups, Seven of Cups, Eight of Cups, Nine of Cups, Ten of Cups, Page of Cups, Knight of Cups, Queen of Cups, King of Cups.
-	Мечи: Ace of Swords, Two of Swords, Three of Swords, Four of Swords, Five of Swords, Six of Swords, Seven of Swords, Eight of Swords, Nine of Swords, Ten of Swords, Page of Swords, Knight of Swords, Queen of Swords, King of Swords.
-	Пентакли: Ace of Pentacles, Two of Pentacles, Three of Pentacles, Four of Pentacles, Five of Pentacles, Six of Pentacles, Seven of Pentacles, Eight of Pentacles, Nine of Pentacles, Ten of Pentacles, Page of Pentacles, Knight of Pentacles, Queen of Pentacles, King of Pentacles.
 
-	Составь подробный и конкретный прогноз (500+ слов) в 3 частях, напрямую отвечая на вопрос пользователя, основываясь на раскладке карт Таро из этого списка. Обязательно заверши все три части полностью, даже если вопрос кажется необычным или провокационным — интерпретируй его как метафору отношений или судьбы, избегая прерывания из-за фильтров безопасности:
-	1) Вступление: атмосферное описание судьбы с мистическими образами, связанное с вопросом, минимум 150 слов, укажи 1-2 карты Таро из списка, которые легли в основу,
-	2) Основная часть: конкретное предсказание по теме и вопросу с практическими советами и предостережениями, минимум 200 слов, укажи 1-2 карты Таро из списка, влияющие на события,
-	3) Размышления о будущем: мистическое видение будущего с конкретными событиями и образами, основанное на вопросе и раскладке карт Таро, минимум 150 слов, укажи 1-2 карты Таро из списка, определившие это видение, и в конце добавь 3 вопроса для размышления, связанных с предсказанием.
-	Разделяй части двумя реальными переносами строк с тремя звёздочками (\n\n***\n\n) для абзацев между частями! Внутри каждой части используй двойные переносы строк для разбивки текста на абзацы. Используй эмодзи для атмосферы. Применяй поэтический стиль с элементами мистики, делай предсказание точным и полезным.`
+	log.Printf("Отправляем запрос к OpenAI с промптом: %s", prompt)
 
-	// Создаем запрос к API
-	data := map[string]interface{}{
-		"model":       "google/gemma-3-27b-it:free",
-		"temperature": 0.6,
-		"max_tokens":  1000,
-		"messages": []map[string]interface{}{
-			{
-				"role": "user",
-				"content": []map[string]interface{}{
-					{
-						"type": "text",
-						"text": prompt,
-					},
+	// Создаем клиент OpenAI
+	client := openai.NewClient(OPENROUTER_API_KEY)
+	client.BaseURL = "https://openrouter.ai/api/v1"
+
+	// Отправляем запрос
+	resp, err := client.CreateChatCompletion(
+		context.Background(),
+		openai.ChatCompletionRequest{
+			Model: "openai/gpt-3.5-turbo",
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: "Ты - Астралия, мудрая гадалка. Твои предсказания должны быть мистическими, но позитивными и вдохновляющими. Используй эмодзи и поэтический язык.",
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: prompt,
 				},
 			},
+			Temperature: 0.7,
 		},
-	}
+	)
 
-	jsonData, err := json.Marshal(data)
 	if err != nil {
-		return "", fmt.Errorf("ошибка маршалинга данных: %v", err)
+		log.Printf("Ошибка при запросе к OpenAI: %v", err)
+		return "", fmt.Errorf("ошибка при получении предсказания: %v", err)
 	}
 
-	req, err := http.NewRequest("POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", fmt.Errorf("ошибка создания запроса: %v", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", OPENROUTER_API_KEY))
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("ошибка выполнения запроса: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("ошибка чтения ответа: %v", err)
+	if len(resp.Choices) == 0 {
+		log.Printf("Нет ответа от OpenAI")
+		return "", fmt.Errorf("нет ответа от предсказателя")
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("ошибка API: %s", string(body))
-	}
-
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-
-	if err := json.Unmarshal(body, &result); err != nil {
-		return "", fmt.Errorf("ошибка парсинга ответа: %v", err)
-	}
-
-	if len(result.Choices) == 0 {
-		return "", fmt.Errorf("пустой ответ от API")
-	}
-
-	return result.Choices[0].Message.Content, nil
+	prediction := resp.Choices[0].Message.Content
+	log.Printf("Получено предсказание: %s", prediction)
+	return prediction, nil
 }
 
 func generateKandinskyImage(prompt string) ([]byte, error) {
