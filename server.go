@@ -32,13 +32,21 @@ func handleWebRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Добавляем CORS заголовки
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, HEAD, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Cache-Control")
 	w.Header().Set("Access-Control-Max-Age", "3600")
 
 	// Обработка preflight запроса
 	if r.Method == "OPTIONS" {
 		log.Printf("Обработка OPTIONS запроса")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Обработка HEAD запроса
+	if r.Method == "HEAD" {
+		log.Printf("Обработка HEAD запроса")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
