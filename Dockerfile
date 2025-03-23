@@ -2,18 +2,20 @@ FROM golang:1.21-alpine
 
 WORKDIR /app
 
-# Копируем файлы зависимостей
+# Copy go.mod and go.sum files
 COPY go.mod go.sum ./
+
+# Download dependencies
 RUN go mod download
 
-# Копируем исходный код
+# Copy the source code
 COPY . .
 
-# Собираем приложение
-RUN CGO_ENABLED=0 GOOS=linux go build -o main .
+# Build the application
+RUN go build -o main ./cmd/server
 
-# Открываем порт
+# Expose port 8080
 EXPOSE 8080
 
-# Запускаем приложение
+# Run the application
 CMD ["./main"] 
