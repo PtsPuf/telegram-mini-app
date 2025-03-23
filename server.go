@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"sync"
@@ -43,6 +46,16 @@ func handleWebRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Читаем тело запроса для логирования
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("Ошибка чтения тела запроса: %v", err)
+		http.Error(w, "Error reading request body", http.StatusBadRequest)
+		return
+	}
+	r.Body = io.NopCloser(bytes.NewBuffer(body))
+	log.Printf("Тело запроса: %s", string(body))
+
 	var state UserState
 	if err := json.NewDecoder(r.Body).Decode(&state); err != nil {
 		log.Printf("Ошибка декодирования JSON: %v", err)
@@ -55,7 +68,7 @@ func handleWebRequest(w http.ResponseWriter, r *http.Request) {
 	prediction, err := getPrediction(&state)
 	if err != nil {
 		log.Printf("Ошибка получения предсказания: %v", err)
-		http.Error(w, "Failed to generate prediction", http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to generate prediction: %v", err), http.StatusInternalServerError)
 		return
 	}
 
