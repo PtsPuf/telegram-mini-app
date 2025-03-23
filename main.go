@@ -11,10 +11,12 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/joho/godotenv"
 	tele "gopkg.in/telebot.v3"
 )
 
@@ -32,11 +34,29 @@ var (
 	bot                *tele.Bot
 	userStates         = make(map[int64]*UserState)
 	userStatesMu       sync.Mutex
-	OPENROUTER_API_KEY = "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"
-	KANDINSKY_API_KEY  = "329DD79327EF341B75E30F3C89BD1881"
-	KANDINSKY_SECRET   = "49B05DC58A7729E3B03FD64B8DF59CD7"
-	KANDINSKY_URL      = "https://api-key.fusionbrain.ai/"
+	OPENROUTER_API_KEY string
+	KANDINSKY_API_KEY  string
+	KANDINSKY_SECRET   string
+	KANDINSKY_URL      string
 )
+
+func init() {
+	// Загружаем переменные окружения из .env файла
+	if err := godotenv.Load(); err != nil {
+		log.Fatal("Ошибка загрузки .env файла")
+	}
+
+	// Получаем значения из переменных окружения
+	OPENROUTER_API_KEY = os.Getenv("OPENROUTER_API_KEY")
+	KANDINSKY_API_KEY = os.Getenv("KANDINSKY_API_KEY")
+	KANDINSKY_SECRET = os.Getenv("KANDINSKY_SECRET")
+	KANDINSKY_URL = os.Getenv("KANDINSKY_URL")
+
+	// Проверяем наличие необходимых переменных
+	if OPENROUTER_API_KEY == "" || KANDINSKY_API_KEY == "" || KANDINSKY_SECRET == "" || KANDINSKY_URL == "" {
+		log.Fatal("Не все необходимые переменные окружения установлены")
+	}
+}
 
 type KandinskyGenerateRequest struct {
 	Type           string `json:"type"`
@@ -62,7 +82,7 @@ func main() {
 
 	var err error
 	bot, err = tele.NewBot(tele.Settings{
-		Token:  "8114182924:AAGac7F4lPl6wQRt02TMLiYixWdSW640fnM",
+		Token:  os.Getenv("TELEGRAM_BOT_TOKEN"),
 		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
 	})
 	if err != nil {
@@ -85,7 +105,7 @@ func main() {
 					{
 						Text: "✨ Получить предсказание",
 						WebApp: &tele.WebApp{
-							URL: "http://localhost:8080",
+							URL: "https://ptspuf.github.io/telegram-mini-app/",
 						},
 					},
 				},
