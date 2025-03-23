@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -265,14 +264,24 @@ func getPrediction(state *UserState) (string, error) {
 	3) Размышления о будущем: мистическое видение будущего с конкретными событиями и образами, основанное на вопросе и раскладке карт Таро, минимум 150 слов, укажи 1-2 карты Таро из списка, определившие это видение, и в конце добавь 3 вопроса для размышления, связанных с предсказанием.
 	Разделяй части двумя реальными переносами строк с тремя звёздочками (\n\n***\n\n) для абзацев между частями! Внутри каждой части используй двойные переносы строк для разбивки текста на абзацы. Используй эмодзи для атмосферы. Применяй поэтический стиль с элементами мистики, делай предсказание точным и полезным.`
 
+	// Создаем запрос к API
 	data := map[string]interface{}{
-		"model":       "google/gemini-2.0-pro-exp-02-05:free",
+		"model":       "google/gemma-3-27b-it:free",
 		"temperature": 0.6,
 		"max_tokens":  1000,
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
+		"messages": []map[string]interface{}{
+			{
+				"role": "user",
+				"content": []map[string]interface{}{
+					{
+						"type": "text",
+						"text": prompt,
+					},
+				},
+			},
 		},
 	}
+
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		return "", fmt.Errorf("ошибка маршалинга данных: %v", err)
@@ -292,27 +301,32 @@ func getPrediction(state *UserState) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("ошибка чтения ответа: %v", err)
 	}
 
-	log.Printf("Полный ответ от OpenRouter: %s", string(body))
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("ошибка API: %s", string(body))
+	}
 
-	var result map[string]interface{}
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
 	if err := json.Unmarshal(body, &result); err != nil {
-		return "", fmt.Errorf("ошибка разбора JSON: %v", err)
-	}
-	choices, ok := result["choices"].([]interface{})
-	if !ok || len(choices) == 0 {
-		return "", fmt.Errorf("нет ответа от API")
+		return "", fmt.Errorf("ошибка парсинга ответа: %v", err)
 	}
 
-	content, ok := choices[0].(map[string]interface{})["message"].(map[string]interface{})["content"].(string)
-	if !ok {
-		return "", fmt.Errorf("неверный формат ответа")
+	if len(result.Choices) == 0 {
+		return "", fmt.Errorf("пустой ответ от API")
 	}
-	return content, nil
+
+	return result.Choices[0].Message.Content, nil
 }
 
 func generateKandinskyImage(prompt string) ([]byte, error) {
