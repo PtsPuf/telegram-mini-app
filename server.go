@@ -28,12 +28,15 @@ var (
 
 func handleWebRequest(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Получен %s запрос от %s", r.Method, r.RemoteAddr)
+	log.Printf("Headers: %+v", r.Header)
 
 	// Добавляем CORS заголовки
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	w.Header().Set("Access-Control-Max-Age", "3600")
 
+	// Обработка preflight запроса
 	if r.Method == "OPTIONS" {
 		log.Printf("Обработка OPTIONS запроса")
 		w.WriteHeader(http.StatusOK)
@@ -53,8 +56,10 @@ func handleWebRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error reading request body", http.StatusBadRequest)
 		return
 	}
-	r.Body = io.NopCloser(bytes.NewBuffer(body))
 	log.Printf("Тело запроса: %s", string(body))
+
+	// Восстанавливаем тело запроса для дальнейшего использования
+	r.Body = io.NopCloser(bytes.NewBuffer(body))
 
 	var state UserState
 	if err := json.NewDecoder(r.Body).Decode(&state); err != nil {
@@ -72,12 +77,20 @@ func handleWebRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Предсказание успешно сгенерировано")
+	log.Printf("Предсказание успешно сгенерировано: %s", prediction)
+
+	response := map[string]string{
+		"prediction": prediction,
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"prediction": prediction,
-	})
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Ошибка кодирования ответа: %v", err)
+		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Ответ успешно отправлен")
 }
 
 func startServer(port string) {

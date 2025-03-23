@@ -373,21 +373,39 @@
                 document.querySelector('button').disabled = true;
 
                 try {
+                    // Создаем контроллер для отмены запроса по таймауту
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 секунд таймаут
+
+                    console.log('Отправляем запрос:', currentState);
                     const response = await fetch('https://telegram-mini-app.onrender.com/', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json'
                         },
-                        body: JSON.stringify(currentState)
+                        body: JSON.stringify(currentState),
+                        signal: controller.signal
                     });
 
+                    clearTimeout(timeoutId);
+
+                    console.log('Получен ответ:', response.status, response.statusText);
+                    
                     if (!response.ok) {
                         const errorText = await response.text();
                         console.error('Server response:', errorText);
-                        throw new Error(`Ошибка сервера: ${response.status} ${errorText}`);
+                        throw new Error(`Ошибка сервера: ${response.status} ${response.statusText} ${errorText}`);
+                    }
+
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        throw new Error(`Неверный тип ответа: ${contentType}`);
                     }
 
                     const data = await response.json();
+                    console.log('Получены данные:', data);
+
                     if (!data.prediction) {
                         throw new Error('Не получено предсказание от сервера');
                     }
@@ -398,7 +416,11 @@
                     showStep('result');
                 } catch (error) {
                     console.error('Error:', error);
-                    alert(`Произошла ошибка при получении предсказания: ${error.message}`);
+                    if (error.name === 'AbortError') {
+                        alert('Превышено время ожидания ответа от сервера. Пожалуйста, попробуйте еще раз.');
+                    } else {
+                        alert(`Произошла ошибка при получении предсказания: ${error.message}`);
+                    }
                 } finally {
                     // Скрываем прелоудер
                     document.querySelector('.loading').classList.remove('show');
