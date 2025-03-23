@@ -43,6 +43,16 @@ func handleWebRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Для GET запросов возвращаем статус сервера
+	if r.Method == "GET" {
+		log.Printf("Обработка GET запроса")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status": "Server is running",
+		})
+		return
+	}
+
 	if r.Method != http.MethodPost {
 		log.Printf("Неверный метод запроса: %s", r.Method)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

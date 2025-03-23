@@ -136,61 +136,29 @@ func isValidDate(date string) bool {
 }
 
 func getPrediction(state *UserState) (string, error) {
+	log.Printf("Начало генерации предсказания для пользователя %s", state.Name)
+
 	config := openai.DefaultConfig(OPENROUTER_API_KEY)
 	config.BaseURL = "https://openrouter.ai/api/v1"
 	client := openai.NewClientWithConfig(config)
 
-	// Список карт Таро для случайного выбора
-	tarotCards := []string{
-		"The Fool", "The Magician", "The High Priestess", "The Empress", "The Emperor",
-		"The Hierophant", "The Lovers", "The Chariot", "Strength", "The Hermit",
-		"Wheel of Fortune", "Justice", "The Hanged Man", "Death", "Temperance",
-		"The Devil", "The Tower", "The Star", "The Moon", "The Sun",
-		"Judgement", "The World", "Ace of Wands", "Two of Wands", "Three of Wands",
-		"Four of Wands", "Five of Wands", "Six of Wands", "Seven of Wands", "Eight of Wands",
-		"Nine of Wands", "Ten of Wands", "Page of Wands", "Knight of Wands", "Queen of Wands",
-		"King of Wands", "Ace of Cups", "Two of Cups", "Three of Cups", "Four of Cups",
-		"Five of Cups", "Six of Cups", "Seven of Cups", "Eight of Cups", "Nine of Cups",
-		"Ten of Cups", "Page of Cups", "Knight of Cups", "Queen of Cups", "King of Cups",
-		"Ace of Swords", "Two of Swords", "Three of Swords", "Four of Swords", "Five of Swords",
-		"Six of Swords", "Seven of Swords", "Eight of Swords", "Nine of Swords", "Ten of Swords",
-		"Page of Swords", "Knight of Swords", "Queen of Swords", "King of Swords", "Ace of Pentacles",
-		"Two of Pentacles", "Three of Pentacles", "Four of Pentacles", "Five of Pentacles", "Six of Pentacles",
-		"Seven of Pentacles", "Eight of Pentacles", "Nine of Pentacles", "Ten of Pentacles", "Page of Pentacles",
-		"Knight of Pentacles", "Queen of Pentacles", "King of Pentacles",
-	}
-
-	// Выбираем случайные карты
-	selectedCards := make([]string, 3)
-	for i := 0; i < 3; i++ {
-		selectedCards[i] = tarotCards[time.Now().UnixNano()%int64(len(tarotCards))]
-		time.Sleep(time.Nanosecond) // Для разного времени
-	}
-
-	// Формируем промпт с учетом вопроса и выбранных карт
+	// Формируем промпт с учетом вопроса
 	prompt := fmt.Sprintf(`Ты - опытная гадалка на картах Таро. Пользователь по имени %s, родившийся %s, задал вопрос: "%s"
 Сфера вопроса: %s
 
-Выпавшие карты: %s
-
-Сделай подробное предсказание, которое:
+Сделай предсказание, которое:
 1. Напрямую отвечает на вопрос пользователя
-2. Учитывает значение каждой выбранной карты
-3. Объясняет, как карты связаны с вопросом
-4. Дает конкретные рекомендации
-
-Формат ответа:
-1. Краткое вступление, связывающее вопрос с выбранными картами
-2. Подробное толкование каждой карты в контексте вопроса
-3. Общее предсказание, объединяющее значения всех карт
-4. Конкретные рекомендации для пользователя
+2. Дает конкретные рекомендации
+3. Учитывает сферу вопроса (%s)
 
 Пиши живым, эмоциональным языком, но сохраняй профессионализм.`,
-		state.Name, state.BirthDate, state.Question, state.Mode, strings.Join(selectedCards, ", "))
+		state.Name, state.BirthDate, state.Question, state.Mode, state.Mode)
 
 	if state.PartnerName != "" && state.PartnerBirth != "" {
 		prompt += fmt.Sprintf("\n\nПартнер: %s, родился(ась) %s.", state.PartnerName, state.PartnerBirth)
 	}
+
+	log.Printf("Отправка запроса к модели с промптом: %s", prompt)
 
 	resp, err := client.CreateChatCompletion(
 		context.Background(),
@@ -212,14 +180,18 @@ func getPrediction(state *UserState) (string, error) {
 	)
 
 	if err != nil {
+		log.Printf("Ошибка при получении предсказания: %v", err)
 		return "", fmt.Errorf("ошибка при получении предсказания: %v", err)
 	}
 
 	if len(resp.Choices) == 0 {
+		log.Printf("Не получен ответ от модели")
 		return "", fmt.Errorf("не получен ответ от модели")
 	}
 
-	return resp.Choices[0].Message.Content, nil
+	prediction := resp.Choices[0].Message.Content
+	log.Printf("Предсказание успешно сгенерировано: %s", prediction)
+	return prediction, nil
 }
 
 func generateKandinskyImage(prompt string) ([]byte, error) {
