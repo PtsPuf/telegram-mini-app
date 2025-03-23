@@ -37,29 +37,25 @@ func handleWebRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Method != "POST" {
+	if r.Method != http.MethodPost {
 		log.Printf("Неверный метод запроса: %s", r.Method)
-		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	var request struct {
-		Question string   `json:"question"`
-		Cards    []string `json:"cards"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		log.Printf("Ошибка декодирования запроса: %v", err)
+	var state UserState
+	if err := json.NewDecoder(r.Body).Decode(&state); err != nil {
+		log.Printf("Ошибка декодирования JSON: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("Получен POST запрос. Вопрос: %s, Карты: %v", request.Question, request.Cards)
+	log.Printf("Получен POST запрос с данными: %+v", state)
 
-	prediction, err := getPrediction(request.Question, request.Cards)
+	prediction, err := getPrediction(&state)
 	if err != nil {
-		log.Printf("Ошибка при получении предсказания: %v", err)
-		http.Error(w, "Error generating prediction", http.StatusInternalServerError)
+		log.Printf("Ошибка получения предсказания: %v", err)
+		http.Error(w, "Failed to generate prediction", http.StatusInternalServerError)
 		return
 	}
 

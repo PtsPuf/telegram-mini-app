@@ -10,18 +10,19 @@
             font-family: 'Arial', sans-serif;
             margin: 0;
             padding: 20px;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: #fff;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 100%);
+            color: #e0e0e0;
             min-height: 100vh;
         }
         .container {
             max-width: 800px;
             margin: 0 auto;
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.3);
             padding: 20px;
             border-radius: 15px;
-            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
             backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
         }
         .step {
             display: none;
@@ -89,9 +90,10 @@
         .prediction {
             margin-top: 20px;
             padding: 20px;
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.2);
             border-radius: 10px;
             display: none;
+            border: 1px solid rgba(255, 255, 255, 0.05);
         }
         .prediction.show {
             display: block;
@@ -105,34 +107,42 @@
             width: 100%;
             padding: 15px;
             margin: 10px 0;
-            border: none;
+            border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px;
-            background: rgba(255, 255, 255, 0.1);
-            color: #fff;
+            background: rgba(0, 0, 0, 0.2);
+            color: #e0e0e0;
             font-size: 16px;
             box-sizing: border-box;
+            transition: all 0.3s ease;
+        }
+        .question-input:focus {
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.2);
+            background: rgba(0, 0, 0, 0.3);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.05);
         }
         .question-input::placeholder {
-            color: rgba(255, 255, 255, 0.6);
+            color: rgba(255, 255, 255, 0.3);
         }
         button {
-            background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
-            color: white;
-            border: none;
+            background: linear-gradient(45deg, #2a2a4a, #3a3a5a);
+            color: #e0e0e0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
             padding: 12px 25px;
             border-radius: 8px;
             cursor: pointer;
             font-size: 16px;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: all 0.3s ease;
             width: 100%;
             margin-top: 10px;
         }
         button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            background: linear-gradient(45deg, #3a3a5a, #4a4a6a);
         }
         button:disabled {
-            background: #ccc;
+            background: #1a1a2a;
             cursor: not-allowed;
             transform: none;
             box-shadow: none;
@@ -148,8 +158,8 @@
         .loading-spinner {
             width: 40px;
             height: 40px;
-            border: 4px solid rgba(255, 255, 255, 0.1);
-            border-left-color: #ff6b6b;
+            border: 4px solid rgba(255, 255, 255, 0.05);
+            border-left-color: #4a4a6a;
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin: 0 auto;
@@ -159,7 +169,7 @@
         }
         .loading-text {
             margin-top: 10px;
-            color: rgba(255, 255, 255, 0.8);
+            color: rgba(255, 255, 255, 0.4);
             font-style: italic;
         }
         .card-name {
@@ -180,6 +190,33 @@
         .card.flipped .card-name {
             display: none;
         }
+        h1, h2 {
+            color: #e0e0e0;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        p {
+            color: rgba(255, 255, 255, 0.6);
+        }
+        .mode-buttons {
+            display: grid;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .mode-button {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            color: #e0e0e0;
+            padding: 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: left;
+        }
+        .mode-button:hover {
+            background: rgba(0, 0, 0, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
     </style>
 </head>
 <body>
@@ -198,31 +235,31 @@
 
         <div id="step1" class="step">
             <h2>Назови свое имя</h2>
-            <input type="text" id="name" placeholder="Введите ваше имя">
+            <input type="text" id="name" class="question-input" placeholder="Введите ваше имя">
             <button onclick="nextStep(1)">Далее</button>
         </div>
 
         <div id="step2" class="step">
             <h2>Дата рождения</h2>
-            <input type="text" id="birthDate" placeholder="ДД.ММ.ГГГГ">
+            <input type="text" id="birthDate" class="question-input" placeholder="ДД.ММ.ГГГГ">
             <button onclick="nextStep(2)">Далее</button>
         </div>
 
         <div id="step3" class="step">
             <h2>Имя партнера</h2>
-            <input type="text" id="partnerName" placeholder="Введите имя партнера">
+            <input type="text" id="partnerName" class="question-input" placeholder="Введите имя партнера">
             <button onclick="nextStep(3)">Далее</button>
         </div>
 
         <div id="step4" class="step">
             <h2>Дата рождения партнера</h2>
-            <input type="text" id="partnerBirth" placeholder="ДД.ММ.ГГГГ">
+            <input type="text" id="partnerBirth" class="question-input" placeholder="ДД.ММ.ГГГГ">
             <button onclick="nextStep(4)">Далее</button>
         </div>
 
         <div id="step5" class="step">
             <h2>Ваш вопрос</h2>
-            <input type="text" id="question" placeholder="Задайте ваш вопрос">
+            <input type="text" id="question" class="question-input" placeholder="Задайте ваш вопрос">
             <button onclick="getPrediction()">Получить предсказание</button>
         </div>
 
@@ -329,14 +366,8 @@
                     return;
                 }
 
-                const selectedCards = document.querySelectorAll('.card.selected');
-                if (selectedCards.length !== 3) {
-                    alert('Пожалуйста, выберите ровно 3 карты');
-                    return;
-                }
+                currentState.question = question;
 
-                const cardNames = Array.from(selectedCards).map(card => card.querySelector('.card-name').textContent);
-                
                 // Показываем прелоудер
                 document.querySelector('.loading').classList.add('show');
                 document.querySelector('button').disabled = true;
@@ -347,10 +378,7 @@
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify({
-                            question: question,
-                            cards: cardNames
-                        })
+                        body: JSON.stringify(currentState)
                     });
 
                     if (!response.ok) {
@@ -361,6 +389,7 @@
                     const predictionDiv = document.querySelector('.prediction');
                     predictionDiv.textContent = data.prediction;
                     predictionDiv.classList.add('show');
+                    showStep('result');
                 } catch (error) {
                     console.error('Error:', error);
                     alert('Произошла ошибка при получении предсказания. Попробуйте позже.');
