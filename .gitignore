@@ -1,4 +1,11 @@
 .DS_Store
 node_modules/
 .env
-*.log 
+*.log
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out 

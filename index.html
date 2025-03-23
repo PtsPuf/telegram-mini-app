@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telegram Mini App</title>
+    <title>Астралия - Гадалка</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         body {
@@ -18,6 +18,12 @@
             margin: 0 auto;
             text-align: center;
         }
+        .step {
+            display: none;
+        }
+        .step.active {
+            display: block;
+        }
         button {
             background-color: var(--tg-theme-button-color, #2481cc);
             color: var(--tg-theme-button-text-color, #ffffff);
@@ -26,25 +32,212 @@
             border-radius: 8px;
             cursor: pointer;
             margin: 10px 0;
+            width: 100%;
         }
         button:hover {
             opacity: 0.9;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid var(--tg-theme-hint-color, #999999);
+            border-radius: 8px;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+        }
+        .mode-buttons {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .mode-button {
+            background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            color: var(--tg-theme-text-color, #000000);
+            border: none;
+            padding: 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: left;
+        }
+        .prediction {
+            white-space: pre-line;
+            text-align: left;
+            margin: 20px 0;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Привет в моем мини-приложении!</h1>
-        <p>Это простое мини-приложение для Telegram</p>
-        <button onclick="showMessage()">Нажми меня!</button>
+        <div id="step0" class="step active">
+            <h1>🌟 Здравствуй, путник!</h1>
+            <p>Я — Астралия ✨, хранительница тайн судьбы. 🌙</p>
+            <p>Через дымку времён я помогу тебе заглянуть в будущее. Выбери, о чём узнать:</p>
+            <div class="mode-buttons">
+                <button class="mode-button" onclick="selectMode('Любовь и отношения')">💖 Любовь и отношения</button>
+                <button class="mode-button" onclick="selectMode('Здоровье')">🌿 Здоровье</button>
+                <button class="mode-button" onclick="selectMode('Карьера и деньги')">💰 Карьера и деньги</button>
+                <button class="mode-button" onclick="selectMode('Принятие решений')">🌀 Принятие решений</button>
+            </div>
+        </div>
+
+        <div id="step1" class="step">
+            <h2>Назови свое имя</h2>
+            <input type="text" id="name" placeholder="Введите ваше имя">
+            <button onclick="nextStep(1)">Далее</button>
+        </div>
+
+        <div id="step2" class="step">
+            <h2>Дата рождения</h2>
+            <input type="text" id="birthDate" placeholder="ДД.ММ.ГГГГ">
+            <button onclick="nextStep(2)">Далее</button>
+        </div>
+
+        <div id="step3" class="step">
+            <h2>Имя партнера</h2>
+            <input type="text" id="partnerName" placeholder="Введите имя партнера">
+            <button onclick="nextStep(3)">Далее</button>
+        </div>
+
+        <div id="step4" class="step">
+            <h2>Дата рождения партнера</h2>
+            <input type="text" id="partnerBirth" placeholder="ДД.ММ.ГГГГ">
+            <button onclick="nextStep(4)">Далее</button>
+        </div>
+
+        <div id="step5" class="step">
+            <h2>Ваш вопрос</h2>
+            <input type="text" id="question" placeholder="Задайте ваш вопрос">
+            <button onclick="getPrediction()">Получить предсказание</button>
+        </div>
+
+        <div id="result" class="step">
+            <h2>Ваше предсказание</h2>
+            <div id="prediction" class="prediction"></div>
+            <button onclick="restart()">Начать заново</button>
+        </div>
     </div>
 
     <script>
         let tg = window.Telegram.WebApp;
         tg.expand();
 
-        function showMessage() {
-            tg.showAlert('Вы нажали на кнопку!');
+        let currentState = {
+            name: '',
+            birthDate: '',
+            question: '',
+            mode: '',
+            partnerName: '',
+            partnerBirth: '',
+            step: 0
+        };
+
+        function showStep(step) {
+            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+            document.getElementById(`step${step}`).classList.add('active');
+        }
+
+        function selectMode(mode) {
+            currentState.mode = mode;
+            currentState.step = 1;
+            showStep(1);
+        }
+
+        function nextStep(currentStep) {
+            switch(currentStep) {
+                case 1:
+                    currentState.name = document.getElementById('name').value;
+                    if (!currentState.name) {
+                        tg.showAlert('Пожалуйста, введите ваше имя');
+                        return;
+                    }
+                    currentState.step = 2;
+                    showStep(2);
+                    break;
+                case 2:
+                    currentState.birthDate = document.getElementById('birthDate').value;
+                    if (!isValidDate(currentState.birthDate)) {
+                        tg.showAlert('Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ');
+                        return;
+                    }
+                    if (currentState.mode === 'Любовь и отношения') {
+                        currentState.step = 3;
+                        showStep(3);
+                    } else {
+                        currentState.step = 5;
+                        showStep(5);
+                    }
+                    break;
+                case 3:
+                    currentState.partnerName = document.getElementById('partnerName').value;
+                    if (!currentState.partnerName) {
+                        tg.showAlert('Пожалуйста, введите имя партнера');
+                        return;
+                    }
+                    currentState.step = 4;
+                    showStep(4);
+                    break;
+                case 4:
+                    currentState.partnerBirth = document.getElementById('partnerBirth').value;
+                    if (!isValidDate(currentState.partnerBirth)) {
+                        tg.showAlert('Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ');
+                        return;
+                    }
+                    currentState.step = 5;
+                    showStep(5);
+                    break;
+            }
+        }
+
+        function isValidDate(date) {
+            const regex = /^(\d{2})\.(\d{2})\.(\d{4})$/;
+            if (!regex.test(date)) return false;
+            const [_, day, month, year] = date.match(regex);
+            const d = new Date(year, month - 1, day);
+            return d.getDate() == day && d.getMonth() == month - 1 && d.getFullYear() == year;
+        }
+
+        async function getPrediction() {
+            currentState.question = document.getElementById('question').value;
+            if (!currentState.question) {
+                tg.showAlert('Пожалуйста, задайте ваш вопрос');
+                return;
+            }
+
+            try {
+                const response = await fetch('/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(currentState)
+                });
+
+                if (!response.ok) {
+                    throw new Error('Ошибка получения предсказания');
+                }
+
+                const data = await response.json();
+                document.getElementById('prediction').textContent = data.prediction;
+                showStep('result');
+            } catch (error) {
+                tg.showAlert('Произошла ошибка при получении предсказания. Попробуйте позже.');
+            }
+        }
+
+        function restart() {
+            currentState = {
+                name: '',
+                birthDate: '',
+                question: '',
+                mode: '',
+                partnerName: '',
+                partnerBirth: '',
+                step: 0
+            };
+            document.getElementById('prediction').textContent = '';
+            showStep(0);
         }
     </script>
 </body>
