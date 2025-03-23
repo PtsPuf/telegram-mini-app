@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 )
 
 type WebAppState struct {
@@ -23,6 +24,13 @@ var (
 )
 
 func handleWebApp(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+
 	if r.Method == "GET" {
 		http.ServeFile(w, r, "index.html")
 		return
@@ -31,6 +39,7 @@ func handleWebApp(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		var state WebAppState
 		if err := json.NewDecoder(r.Body).Decode(&state); err != nil {
+			log.Printf("Ошибка декодирования JSON: %v", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -52,15 +61,19 @@ func handleWebApp(w http.ResponseWriter, r *http.Request) {
 				Step:         state.Step,
 			})
 			if err != nil {
+				log.Printf("Ошибка получения предсказания: %v", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 
 			// Отправляем предсказание обратно
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]string{
+			if err := json.NewEncoder(w).Encode(map[string]string{
 				"prediction": prediction,
-			})
+			}); err != nil {
+				log.Printf("Ошибка отправки ответа: %v", err)
+				http.Error(w, "Ошибка отправки ответа", http.StatusInternalServerError)
+			}
 			return
 		}
 
@@ -74,7 +87,18 @@ func startServer() {
 	http.HandleFunc("/", handleWebApp)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
+	// Создаем сервер с увеличенным таймаутом
+	server := &http.Server{
+		Addr:           ":8080",
+		Handler:        nil,
+		ReadTimeout:    120 * time.Second,
+		WriteTimeout:   120 * time.Second,
+		MaxHeaderBytes: 1 << 20, // 1MB
+	}
+
 	// Запускаем сервер
 	log.Println("Сервер запущен на http://localhost:8080")
-	go http.ListenAndServe(":8080", nil)
+	if err := server.ListenAndServe(); err != nil {
+		log.Printf("Ошибка запуска сервера: %v", err)
+	}
 }

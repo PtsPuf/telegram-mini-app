@@ -120,114 +120,11 @@
     </div>
 
     <script>
-        let tg = window.Telegram.WebApp;
-        tg.expand();
+        (function() {
+            let tg = window.Telegram.WebApp;
+            tg.expand();
 
-        let currentState = {
-            name: '',
-            birthDate: '',
-            question: '',
-            mode: '',
-            partnerName: '',
-            partnerBirth: '',
-            step: 0
-        };
-
-        function showStep(step) {
-            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
-            document.getElementById(`step${step}`).classList.add('active');
-        }
-
-        function selectMode(mode) {
-            currentState.mode = mode;
-            currentState.step = 1;
-            showStep(1);
-        }
-
-        function nextStep(currentStep) {
-            switch(currentStep) {
-                case 1:
-                    currentState.name = document.getElementById('name').value;
-                    if (!currentState.name) {
-                        tg.showAlert('Пожалуйста, введите ваше имя');
-                        return;
-                    }
-                    currentState.step = 2;
-                    showStep(2);
-                    break;
-                case 2:
-                    currentState.birthDate = document.getElementById('birthDate').value;
-                    if (!isValidDate(currentState.birthDate)) {
-                        tg.showAlert('Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ');
-                        return;
-                    }
-                    if (currentState.mode === 'Любовь и отношения') {
-                        currentState.step = 3;
-                        showStep(3);
-                    } else {
-                        currentState.step = 5;
-                        showStep(5);
-                    }
-                    break;
-                case 3:
-                    currentState.partnerName = document.getElementById('partnerName').value;
-                    if (!currentState.partnerName) {
-                        tg.showAlert('Пожалуйста, введите имя партнера');
-                        return;
-                    }
-                    currentState.step = 4;
-                    showStep(4);
-                    break;
-                case 4:
-                    currentState.partnerBirth = document.getElementById('partnerBirth').value;
-                    if (!isValidDate(currentState.partnerBirth)) {
-                        tg.showAlert('Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ');
-                        return;
-                    }
-                    currentState.step = 5;
-                    showStep(5);
-                    break;
-            }
-        }
-
-        function isValidDate(date) {
-            const regex = /^(\d{2})\.(\d{2})\.(\d{4})$/;
-            if (!regex.test(date)) return false;
-            const [_, day, month, year] = date.match(regex);
-            const d = new Date(year, month - 1, day);
-            return d.getDate() == day && d.getMonth() == month - 1 && d.getFullYear() == year;
-        }
-
-        async function getPrediction() {
-            currentState.question = document.getElementById('question').value;
-            if (!currentState.question) {
-                tg.showAlert('Пожалуйста, задайте ваш вопрос');
-                return;
-            }
-
-            try {
-                const response = await fetch('/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(currentState)
-                });
-
-                if (!response.ok) {
-                    throw new Error('Ошибка получения предсказания');
-                }
-
-                const data = await response.json();
-                document.getElementById('prediction').textContent = data.prediction;
-                showStep('result');
-            } catch (error) {
-                tg.showAlert('Произошла ошибка при получении предсказания. Попробуйте позже.');
-            }
-        }
-
-        function restart() {
-            currentState = {
+            let currentState = {
                 name: '',
                 birthDate: '',
                 question: '',
@@ -236,9 +133,121 @@
                 partnerBirth: '',
                 step: 0
             };
-            document.getElementById('prediction').textContent = '';
-            showStep(0);
-        }
+
+            function showStep(step) {
+                document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+                document.getElementById(`step${step}`).classList.add('active');
+            }
+
+            function selectMode(mode) {
+                currentState.mode = mode;
+                currentState.step = 1;
+                showStep(1);
+            }
+
+            function nextStep(currentStep) {
+                switch(currentStep) {
+                    case 1:
+                        currentState.name = document.getElementById('name').value;
+                        if (!currentState.name) {
+                            tg.showAlert('Пожалуйста, введите ваше имя');
+                            return;
+                        }
+                        currentState.step = 2;
+                        showStep(2);
+                        break;
+                    case 2:
+                        currentState.birthDate = document.getElementById('birthDate').value;
+                        if (!isValidDate(currentState.birthDate)) {
+                            tg.showAlert('Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ');
+                            return;
+                        }
+                        if (currentState.mode === 'Любовь и отношения') {
+                            currentState.step = 3;
+                            showStep(3);
+                        } else {
+                            currentState.step = 5;
+                            showStep(5);
+                        }
+                        break;
+                    case 3:
+                        currentState.partnerName = document.getElementById('partnerName').value;
+                        if (!currentState.partnerName) {
+                            tg.showAlert('Пожалуйста, введите имя партнера');
+                            return;
+                        }
+                        currentState.step = 4;
+                        showStep(4);
+                        break;
+                    case 4:
+                        currentState.partnerBirth = document.getElementById('partnerBirth').value;
+                        if (!isValidDate(currentState.partnerBirth)) {
+                            tg.showAlert('Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ');
+                            return;
+                        }
+                        currentState.step = 5;
+                        showStep(5);
+                        break;
+                }
+            }
+
+            function isValidDate(date) {
+                const regex = /^(\d{2})\.(\d{2})\.(\d{4})$/;
+                if (!regex.test(date)) return false;
+                const [_, day, month, year] = date.match(regex);
+                const d = new Date(year, month - 1, day);
+                return d.getDate() == day && d.getMonth() == month - 1 && d.getFullYear() == year;
+            }
+
+            async function getPrediction() {
+                currentState.question = document.getElementById('question').value;
+                if (!currentState.question) {
+                    tg.showAlert('Пожалуйста, задайте ваш вопрос');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('https://ptspuf.github.io/telegram-mini-app/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(currentState)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Ошибка получения предсказания');
+                    }
+
+                    const data = await response.json();
+                    document.getElementById('prediction').textContent = data.prediction;
+                    showStep('result');
+                } catch (error) {
+                    console.error('Ошибка:', error);
+                    tg.showAlert('Произошла ошибка при получении предсказания. Попробуйте позже.');
+                }
+            }
+
+            function restart() {
+                currentState = {
+                    name: '',
+                    birthDate: '',
+                    question: '',
+                    mode: '',
+                    partnerName: '',
+                    partnerBirth: '',
+                    step: 0
+                };
+                document.getElementById('prediction').textContent = '';
+                showStep(0);
+            }
+
+            // Делаем функции доступными глобально
+            window.selectMode = selectMode;
+            window.nextStep = nextStep;
+            window.getPrediction = getPrediction;
+            window.restart = restart;
+        })();
     </script>
 </body>
 </html> 
