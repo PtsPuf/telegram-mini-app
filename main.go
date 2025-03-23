@@ -46,9 +46,9 @@ func init() {
 	KANDINSKY_SECRET = os.Getenv("KANDINSKY_SECRET")
 	KANDINSKY_URL = os.Getenv("KANDINSKY_URL")
 
-	// Проверяем наличие необходимых переменных
-	if OPENROUTER_API_KEY == "" || KANDINSKY_API_KEY == "" || KANDINSKY_SECRET == "" || KANDINSKY_URL == "" {
-		log.Fatal("Не все необходимые переменные окружения установлены")
+	// Проверяем только критически важные переменные
+	if OPENROUTER_API_KEY == "" {
+		log.Printf("ВНИМАНИЕ: OPENROUTER_API_KEY не установлен")
 	}
 }
 
@@ -82,6 +82,11 @@ func main() {
 	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
 	if botToken == "" {
 		log.Fatal("TELEGRAM_BOT_TOKEN не установлен")
+	}
+
+	// Проверяем наличие необходимых API ключей
+	if OPENROUTER_API_KEY == "" {
+		log.Fatal("OPENROUTER_API_KEY не установлен")
 	}
 
 	pref := tele.Settings{
