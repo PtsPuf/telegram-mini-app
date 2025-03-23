@@ -21,6 +21,16 @@ import (
 	tele "gopkg.in/telebot.v3"
 )
 
+var (
+	bot                *tele.Bot
+	userStates         = make(map[int64]*UserState)
+	userStatesMu       sync.RWMutex
+	OPENROUTER_API_KEY string
+	KANDINSKY_API_KEY  string
+	KANDINSKY_SECRET   string
+	KANDINSKY_URL      string
+)
+
 type UserState struct {
 	Name         string
 	BirthDate    string
@@ -30,16 +40,6 @@ type UserState struct {
 	PartnerBirth string
 	Step         int
 }
-
-var (
-	bot                *tele.Bot
-	userStates         = make(map[int64]*UserState)
-	userStatesMu       sync.Mutex
-	OPENROUTER_API_KEY string
-	KANDINSKY_API_KEY  string
-	KANDINSKY_SECRET   string
-	KANDINSKY_URL      string
-)
 
 func init() {
 	// Получаем значения из переменных окружения
@@ -150,8 +150,9 @@ func getPrediction(state *UserState) (string, error) {
 	log.Printf("Отправляем запрос к OpenAI с промптом: %s", prompt)
 
 	// Создаем клиент OpenAI
-	client := openai.NewClient(OPENROUTER_API_KEY)
-	client.BaseURL = "https://openrouter.ai/api/v1"
+	config := openai.DefaultConfig(OPENROUTER_API_KEY)
+	config.BaseURL = "https://openrouter.ai/api/v1"
+	client := openai.NewClientWithConfig(config)
 
 	// Отправляем запрос
 	resp, err := client.CreateChatCompletion(
