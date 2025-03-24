@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/PtsPuf/telegram-mini-app/pkg/common"
 )
@@ -18,15 +19,31 @@ var (
 )
 
 func startServer(port string) {
+	// Create a custom server with timeouts
+	server := &http.Server{
+		Addr:           ":" + port,
+		Handler:        nil,
+		ReadTimeout:    300 * time.Second, // 5 minutes
+		WriteTimeout:   300 * time.Second, // 5 minutes
+		MaxHeaderBytes: 1 << 20,           // 1MB
+	}
+
+	// Create a custom mux for routing
+	mux := http.NewServeMux()
+
 	// Serve static files
 	fs := http.FileServer(http.Dir("static"))
-	http.Handle("/", fs)
+	mux.Handle("/static/", http.StripPrefix("/static/", fs))
+	mux.Handle("/", fs)
 
 	// Handle prediction endpoint
-	http.HandleFunc("/prediction", handlePrediction)
+	mux.HandleFunc("/prediction", handlePrediction)
+
+	// Set the custom mux as the server's handler
+	server.Handler = mux
 
 	log.Printf("Starting server on port %s", port)
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
@@ -36,7 +53,10 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, HEAD")
 	w.Header().Set("Access-Control-Allow-Headers", "*")
-	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	w.Header().Set("Access-Control-Max-Age", "3600")
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 
 	// Handle preflight OPTIONS request
 	if r.Method == "OPTIONS" {
@@ -63,6 +83,8 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("Received prediction request for user: %s", state.Name)
+
 	// Get prediction
 	prediction, err := getPrediction(&state)
 	if err != nil {
@@ -70,6 +92,8 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Error getting prediction: %v", err), http.StatusInternalServerError)
 		return
 	}
+
+	log.Printf("Generated prediction for user: %s", state.Name)
 
 	// Generate images
 	var wg sync.WaitGroup
@@ -80,12 +104,14 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
+			log.Printf("Generating image %d for user: %s", index+1, state.Name)
 			img, err := common.GenerateKandinskyImage(prediction.ImagePrompts[index])
 			if err != nil {
 				imageErrors = append(imageErrors, fmt.Errorf("error generating image %d: %v", index+1, err))
 				return
 			}
 			images[index] = img
+			log.Printf("Generated image %d for user: %s", index+1, state.Name)
 		}(i)
 	}
 	wg.Wait()
@@ -111,6 +137,8 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error encoding response", http.StatusInternalServerError)
 		return
 	}
+
+	log.Printf("Successfully sent prediction for user: %s", state.Name)
 }
 
 func getPrediction(state *common.UserState) (*common.Prediction, error) {

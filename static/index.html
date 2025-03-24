@@ -118,6 +118,34 @@
         tg.expand();
         tg.ready();
 
+        async function fetchWithRetry(url, options, maxRetries = 3) {
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes timeout
+                    
+                    const response = await fetch(url, {
+                        ...options,
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    return response;
+                } catch (error) {
+                    if (i === maxRetries - 1) {
+                        throw error;
+                    }
+                    console.log(`Повторная попытка через 2 секунды. Осталось попыток: ${maxRetries - i - 1}`);
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+            }
+        }
+
         async function getPrediction() {
             const name = document.getElementById('name').value;
             const birthDate = document.getElementById('birthDate').value;
@@ -140,34 +168,34 @@
             predictionDiv.style.display = 'none';
 
             try {
-                const response = await fetch('/prediction', {
+                const data = {
+                    name: name,
+                    birthDate: birthDate,
+                    question: question,
+                    mode: mode,
+                    partnerName: partnerName,
+                    partnerBirth: partnerBirth,
+                    step: 1
+                };
+
+                console.log('Отправляем запрос:', data);
+
+                const response = await fetchWithRetry('/prediction', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Cache-Control': 'no-store, no-cache, must-revalidate'
                     },
-                    body: JSON.stringify({
-                        name: name,
-                        birthDate: birthDate,
-                        question: question,
-                        mode: mode,
-                        partnerName: partnerName,
-                        partnerBirth: partnerBirth,
-                        step: 1
-                    })
+                    body: JSON.stringify(data)
                 });
 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const data = await response.json();
+                const responseData = await response.json();
                 
-                let html = `<p>${data.text}</p>`;
+                let html = `<p>${responseData.text}</p>`;
                 
                 // Add images
-                for (let i = 0; i < data.images.length; i++) {
-                    const base64Image = btoa(String.fromCharCode.apply(null, new Uint8Array(data.images[i])));
+                for (let i = 0; i < responseData.images.length; i++) {
+                    const base64Image = btoa(String.fromCharCode.apply(null, new Uint8Array(responseData.images[i])));
                     html += `<img src="data:image/jpeg;base64,${base64Image}" alt="Изображение ${i + 1}">`;
                 }
 
