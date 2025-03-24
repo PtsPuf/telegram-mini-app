@@ -31,10 +31,10 @@ func startServer(port string) {
 	// Create a custom mux for routing
 	mux := http.NewServeMux()
 
-	// Serve static files
+	// Serve static files with custom headers
 	fs := http.FileServer(http.Dir("static"))
-	mux.Handle("/static/", http.StripPrefix("/static/", fs))
-	mux.Handle("/", fs)
+	mux.Handle("/static/", addHeaders(http.StripPrefix("/static/", fs)))
+	mux.Handle("/", addHeaders(fs))
 
 	// Handle prediction endpoint
 	mux.HandleFunc("/prediction", handlePrediction)
@@ -46,6 +46,25 @@ func startServer(port string) {
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
+}
+
+// addHeaders adds security and caching headers to all responses
+func addHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set security headers
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Content-Security-Policy", "default-src 'self' https://telegram.org; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' https://telegram.org;")
+
+		// Set caching headers
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func handlePrediction(w http.ResponseWriter, r *http.Request) {
@@ -75,6 +94,9 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	// Set content type
+	w.Header().Set("Content-Type", "application/json")
 
 	var state common.UserState
 	if err := json.NewDecoder(r.Body).Decode(&state); err != nil {
@@ -131,7 +153,6 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 		Prompts: prediction.ImagePrompts,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.Printf("Error encoding response: %v", err)
 		http.Error(w, "Error encoding response", http.StatusInternalServerError)
