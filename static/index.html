@@ -207,6 +207,16 @@
                 };
 
                 console.log('Отправляем запрос:', data);
+                
+                // Установим максимальное время ожидания в 5 минут
+                const timeout = 300000;
+                const startTime = Date.now();
+                
+                // Обновляем индикатор загрузки
+                const updateLoader = setInterval(() => {
+                    const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+                    preloader.innerHTML = `Генерируем предсказание... ${elapsedTime} сек.`;
+                }, 1000);
 
                 const response = await fetchWithRetry('/prediction', {
                     method: 'POST',
@@ -215,15 +225,38 @@
                     },
                     body: JSON.stringify(data)
                 });
+                
+                clearInterval(updateLoader);
 
                 const responseData = await response.json();
                 
+                console.log('Получен ответ от сервера:', responseData);
+                
+                if (!responseData || !responseData.text) {
+                    throw new Error('Получен некорректный ответ от сервера');
+                }
+                
                 let html = `<p>${responseData.text}</p>`;
                 
-                // Add images
-                for (let i = 0; i < responseData.images.length; i++) {
-                    const base64Image = btoa(String.fromCharCode.apply(null, new Uint8Array(responseData.images[i])));
-                    html += `<img src="data:image/jpeg;base64,${base64Image}" alt="Изображение ${i + 1}">`;
+                // Add images if they exist
+                if (responseData.images && Array.isArray(responseData.images)) {
+                    for (let i = 0; i < responseData.images.length; i++) {
+                        if (responseData.images[i]) {
+                            const imageData = responseData.images[i];
+                            
+                            // Проверяем, является ли imageData массивом байтов или строкой base64
+                            let base64Image;
+                            if (Array.isArray(imageData)) {
+                                base64Image = btoa(String.fromCharCode.apply(null, new Uint8Array(imageData)));
+                            } else if (typeof imageData === 'string') {
+                                base64Image = imageData;
+                            }
+                            
+                            if (base64Image) {
+                                html += `<img src="data:image/jpeg;base64,${base64Image}" alt="Изображение ${i + 1}">`;
+                            }
+                        }
+                    }
                 }
 
                 predictionDiv.innerHTML = html;
@@ -234,6 +267,7 @@
             } finally {
                 button.disabled = false;
                 preloader.style.display = 'none';
+                preloader.innerHTML = '';
             }
         }
     </script>

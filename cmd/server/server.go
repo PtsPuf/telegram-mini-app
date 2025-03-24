@@ -163,26 +163,79 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 }
 
 func getPrediction(state *common.UserState) (*common.Prediction, error) {
+	log.Printf("Начинаем генерацию предсказания для пользователя %s", state.Name)
+
 	prompt := fmt.Sprintf("Ты - опытный таролог и экстрасенс. Тебе нужно дать предсказание для человека по имени %s (родился(ась) %s). "+
 		"Вопрос: %s (сфера: %s). "+
 		"Дай подробное предсказание (минимум 2000 символов). В конце предсказания сгенерируй три отдельных промпта для генерации изображений, "+
-		"которые будут иллюстрировать твое предсказание. Каждый промпт должен быть на английском языке и содержать описание изображения в стиле Кандинского.",
+		"каждый начни с новой строки и префиксом 'IMAGE_PROMPT:'. Каждый промпт должен быть на английском языке и содержать описание изображения в стиле Кандинского.",
 		state.Name, state.BirthDate, state.Question, state.Mode)
 
-	client := common.NewOpenAIClient(os.Getenv("OPENROUTER_API_KEY"))
+	apiKey := os.Getenv("OPENROUTER_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("OPENROUTER_API_KEY не установлен")
+	}
+
+	log.Printf("API ключ OpenRouter доступен, длина: %d", len(apiKey))
+	client := common.NewOpenAIClient(apiKey)
+
 	response, err := client.CreateChatCompletion(prompt)
 	if err != nil {
+		log.Printf("Ошибка при вызове OpenRouter API: %v", err)
 		return nil, fmt.Errorf("error creating chat completion: %v", err)
 	}
 
-	// Split response into text and prompts
-	parts := strings.Split(response, "\n\n")
-	if len(parts) < 4 {
-		return nil, fmt.Errorf("invalid response format")
+	log.Printf("Получен ответ от OpenRouter API, длина: %d символов", len(response))
+	log.Printf("Ответ API: %s", response)
+
+	// Ищем промпты для изображений по префиксу
+	var imagePrompts []string
+	var textParts []string
+	lines := strings.Split(response, "\n")
+
+	for _, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmedLine, "IMAGE_PROMPT:") {
+			prompt := strings.TrimPrefix(trimmedLine, "IMAGE_PROMPT:")
+			imagePrompts = append(imagePrompts, strings.TrimSpace(prompt))
+		} else {
+			textParts = append(textParts, line)
+		}
 	}
 
-	text := strings.Join(parts[:len(parts)-3], "\n\n")
-	imagePrompts := parts[len(parts)-3:]
+	text := strings.Join(textParts, "\n")
+
+	// Если не нашли промпты, пробуем другой способ - ищем последние три абзаца
+	if len(imagePrompts) < 3 {
+		log.Printf("Не найдены промпты с префиксом, пробуем альтернативный метод")
+		parts := strings.Split(response, "\n\n")
+		if len(parts) >= 4 {
+			text = strings.Join(parts[:len(parts)-3], "\n\n")
+			imagePrompts = parts[len(parts)-3:]
+		} else {
+			// Если не удалось разделить, генерируем стандартные промпты
+			log.Printf("Не удалось выделить промпты, используем стандартные")
+			imagePrompts = []string{
+				"Abstract spiritual energy in Kandinsky style with vibrant colors",
+				"Mystical symbols and patterns in Kandinsky composition",
+				"Cosmic harmony and balance in abstract Kandinsky expressionism",
+			}
+		}
+	}
+
+	// Проверяем количество промптов
+	for len(imagePrompts) < 3 {
+		log.Printf("Недостаточно промптов, добавляем стандартный")
+		imagePrompts = append(imagePrompts, "Abstract spiritual energy in Kandinsky style")
+	}
+
+	// Обрезаем до трех промптов
+	if len(imagePrompts) > 3 {
+		imagePrompts = imagePrompts[:3]
+	}
+
+	log.Printf("Финальный текст предсказания, длина: %d символов", len(text))
+	log.Printf("Промпты для изображений: %v", imagePrompts)
 
 	return &common.Prediction{
 		Text:         text,
