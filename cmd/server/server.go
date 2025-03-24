@@ -18,6 +18,11 @@ var (
 )
 
 func startServer(port string) {
+	// Serve static files
+	fs := http.FileServer(http.Dir("static"))
+	http.Handle("/", fs)
+
+	// Handle prediction endpoint
 	http.HandleFunc("/prediction", handlePrediction)
 
 	log.Printf("Starting server on port %s", port)
@@ -109,10 +114,11 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 }
 
 func getPrediction(state *common.UserState) (*common.Prediction, error) {
-	prompt := fmt.Sprintf("Ты - опытный таролог и экстрасенс. Тебе нужно дать предсказание для человека, у которого: возраст %d, пол %s. "+
-		"Дай общее предсказание на будущее (минимум 2000 символов). В конце предсказания сгенерируй три отдельных промпта для генерации изображений, "+
+	prompt := fmt.Sprintf("Ты - опытный таролог и экстрасенс. Тебе нужно дать предсказание для человека по имени %s (родился(ась) %s). "+
+		"Вопрос: %s (сфера: %s). "+
+		"Дай подробное предсказание (минимум 2000 символов). В конце предсказания сгенерируй три отдельных промпта для генерации изображений, "+
 		"которые будут иллюстрировать твое предсказание. Каждый промпт должен быть на английском языке и содержать описание изображения в стиле Кандинского.",
-		state.Age, state.Gender)
+		state.Name, state.BirthDate, state.Question, state.Mode)
 
 	client := common.NewOpenAIClient(os.Getenv("OPENROUTER_API_KEY"))
 	response, err := client.CreateChatCompletion(prompt)

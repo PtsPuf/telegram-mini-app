@@ -2,8 +2,13 @@ package common
 
 // UserState представляет состояние пользователя
 type UserState struct {
-	Age    int    `json:"age"`
-	Gender string `json:"gender"`
+	Name         string `json:"name"`
+	BirthDate    string `json:"birthDate"`
+	Question     string `json:"question"`
+	Mode         string `json:"mode"`
+	PartnerName  string `json:"partnerName"`
+	PartnerBirth string `json:"partnerBirth"`
+	Step         int    `json:"step"`
 }
 
 // Prediction представляет предсказание
