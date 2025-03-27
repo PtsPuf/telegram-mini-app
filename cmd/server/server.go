@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -68,29 +69,33 @@ func addHeaders(next http.Handler) http.Handler {
 }
 
 func handlePrediction(w http.ResponseWriter, r *http.Request) {
-	// Set CORS headers
+	log.Printf("Получен запрос на /prediction")
+	log.Printf("Метод запроса: %s", r.Method)
+	log.Printf("Заголовки запроса: %v", r.Header)
+
+	// Set CORS headers first
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, HEAD")
-	w.Header().Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 	w.Header().Set("Access-Control-Max-Age", "3600")
-	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
-	w.Header().Set("Pragma", "no-cache")
-	w.Header().Set("Expires", "0")
 
 	// Handle preflight OPTIONS request
 	if r.Method == "OPTIONS" {
+		log.Printf("Обработка OPTIONS запроса")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
 	// Handle HEAD request
 	if r.Method == "HEAD" {
+		log.Printf("Обработка HEAD запроса")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
 	if r.Method != "POST" {
+		log.Printf("Неподдерживаемый метод: %s", r.Method)
 		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -98,24 +103,34 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 	// Set content type
 	w.Header().Set("Content-Type", "application/json")
 
+	// Read body
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("Ошибка чтения тела запроса: %v", err)
+		http.Error(w, "Error reading request body", http.StatusBadRequest)
+		return
+	}
+	log.Printf("Тело запроса: %s", string(body))
+
 	var state common.UserState
-	if err := json.NewDecoder(r.Body).Decode(&state); err != nil {
-		log.Printf("Error decoding request body: %v", err)
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if err := json.Unmarshal(body, &state); err != nil {
+		log.Printf("Ошибка декодирования JSON: %v", err)
+		http.Error(w, "Invalid JSON in request body", http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("Received prediction request for user: %s", state.Name)
+	log.Printf("Получен запрос на предсказание для пользователя: %s", state.Name)
+	log.Printf("Данные запроса: %+v", state)
 
 	// Get prediction
 	prediction, err := getPrediction(&state)
 	if err != nil {
-		log.Printf("Error getting prediction: %v", err)
+		log.Printf("Ошибка получения предсказания: %v", err)
 		http.Error(w, fmt.Sprintf("Error getting prediction: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Generated prediction for user: %s", state.Name)
+	log.Printf("Сгенерировано предсказание для пользователя: %s", state.Name)
 
 	// Generate images
 	var wg sync.WaitGroup
@@ -126,14 +141,15 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
-			log.Printf("Generating image %d for user: %s", index+1, state.Name)
+			log.Printf("Начало генерации изображения %d для пользователя: %s", index+1, state.Name)
 			img, err := common.GenerateKandinskyImage(prediction.ImagePrompts[index])
 			if err != nil {
+				log.Printf("Ошибка генерации изображения %d: %v", index+1, err)
 				imageErrors = append(imageErrors, fmt.Errorf("error generating image %d: %v", index+1, err))
 				return
 			}
 			images[index] = img
-			log.Printf("Generated image %d for user: %s", index+1, state.Name)
+			log.Printf("Успешно сгенерировано изображение %d для пользователя: %s", index+1, state.Name)
 		}(i)
 	}
 	wg.Wait()
@@ -143,6 +159,7 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 		for i, err := range imageErrors {
 			errMsgs[i] = err.Error()
 		}
+		log.Printf("Ошибки при генерации изображений: %v", errMsgs)
 		http.Error(w, fmt.Sprintf("Error generating images: %s", strings.Join(errMsgs, "; ")), http.StatusInternalServerError)
 		return
 	}
@@ -153,13 +170,18 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 		Prompts: prediction.ImagePrompts,
 	}
 
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("Error encoding response: %v", err)
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("Ошибка кодирования ответа: %v", err)
 		http.Error(w, "Error encoding response", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Successfully sent prediction for user: %s", state.Name)
+	log.Printf("Отправка ответа пользователю: %s", state.Name)
+	log.Printf("Размер ответа: %d байт", len(responseJSON))
+
+	w.Write(responseJSON)
+	log.Printf("Успешно отправлен ответ пользователю: %s", state.Name)
 }
 
 func getPrediction(state *common.UserState) (*common.Prediction, error) {
