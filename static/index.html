@@ -212,6 +212,8 @@
             preloader.style.display = 'block';
             predictionDiv.style.display = 'none';
 
+            let updateLoaderInterval;
+
             try {
                 const data = {
                     name: name,
@@ -226,26 +228,31 @@
                 console.log('Подготовка данных для запроса:', data);
                 
                 // Установим максимальное время ожидания в 5 минут
-                const timeout = 300000;
                 const startTime = Date.now();
                 
                 // Обновляем индикатор загрузки
-                const updateLoader = setInterval(() => {
+                updateLoaderInterval = setInterval(() => {
                     const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
                     preloader.innerHTML = `Генерируем предсказание... ${elapsedTime} сек.`;
                 }, 1000);
 
-                console.log('Отправка запроса на сервер...');
-                const response = await fetchWithRetry('/prediction', {
+                // Получаем базовый URL из текущего location
+                const baseUrl = window.location.origin;
+                const apiUrl = `${baseUrl}/prediction`;
+                
+                console.log('Отправка запроса на:', apiUrl);
+                const response = await fetchWithRetry(apiUrl, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
                     },
                     body: JSON.stringify(data)
                 });
                 
-                clearInterval(updateLoader);
-                console.log('Получен ответ от сервера');
+                if (updateLoaderInterval) {
+                    clearInterval(updateLoaderInterval);
+                }
 
                 const responseData = await response.json();
                 console.log('Данные ответа:', {
@@ -299,6 +306,9 @@
                 button.disabled = false;
                 preloader.style.display = 'none';
                 preloader.innerHTML = '';
+                if (updateLoaderInterval) {
+                    clearInterval(updateLoaderInterval);
+                }
             }
         }
     </script>
