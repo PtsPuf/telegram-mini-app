@@ -20,6 +20,13 @@ var (
 )
 
 func startServer(port string) {
+	log.Printf("Инициализация сервера...")
+	log.Printf("Проверка переменных окружения:")
+	log.Printf("OPENROUTER_API_KEY: %v", os.Getenv("OPENROUTER_API_KEY") != "")
+	log.Printf("KANDINSKY_API_KEY: %v", os.Getenv("KANDINSKY_API_KEY") != "")
+	log.Printf("KANDINSKY_SECRET: %v", os.Getenv("KANDINSKY_SECRET") != "")
+	log.Printf("KANDINSKY_URL: %v", os.Getenv("KANDINSKY_URL") != "")
+
 	// Create a custom server with timeouts
 	server := &http.Server{
 		Addr:           ":" + port,
@@ -43,9 +50,9 @@ func startServer(port string) {
 	// Set the custom mux as the server's handler
 	server.Handler = mux
 
-	log.Printf("Starting server on port %s", port)
+	log.Printf("Сервер настроен и готов к запуску на порту %s", port)
 	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		log.Fatalf("Ошибка запуска сервера: %v", err)
 	}
 }
 
