@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Гадалка</title>
-    <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -75,6 +75,122 @@
             }
         }
     </style>
+    <script>
+        // Инициализация Telegram Web App
+        let tg = window.Telegram?.WebApp;
+        if (tg) {
+            tg.expand();
+            tg.ready();
+        }
+
+        // Глобальные переменные для управления запросами
+        let currentController = null;
+        let currentRequest = null;
+
+        async function fetchWithTimeout(url, options, timeout = 300000) {
+            if (currentController) {
+                currentController.abort();
+            }
+            currentController = new AbortController();
+            
+            try {
+                const response = await Promise.race([
+                    fetch(url, {
+                        ...options,
+                        signal: currentController.signal,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'Cache-Control': 'no-store',
+                            ...options.headers
+                        }
+                    }),
+                    new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Timeout')), timeout)
+                    )
+                ]);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                return response;
+            } finally {
+                currentController = null;
+            }
+        }
+
+        async function getPrediction() {
+            const name = document.getElementById('name').value;
+            const birthDate = document.getElementById('birthDate').value;
+            const question = document.getElementById('question').value;
+            const mode = document.getElementById('mode').value;
+            const partnerName = document.getElementById('partnerName').value;
+            const partnerBirth = document.getElementById('partnerBirth').value;
+
+            if (!name || !birthDate || !question || !mode) {
+                alert('Пожалуйста, заполните все обязательные поля');
+                return;
+            }
+
+            const button = document.getElementById('getPrediction');
+            const preloader = document.getElementById('preloader');
+            const predictionDiv = document.getElementById('prediction');
+
+            button.disabled = true;
+            preloader.style.display = 'block';
+            predictionDiv.style.display = 'none';
+
+            const data = {
+                name,
+                birthDate,
+                question,
+                mode,
+                partnerName,
+                partnerBirth
+            };
+
+            console.log('Отправляем запрос:', data);
+
+            const apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                ? `${window.location.protocol}//${window.location.host}/prediction`
+                : 'https://telegram-mini-app.onrender.com/prediction';
+
+            let retries = 3;
+            while (retries > 0) {
+                try {
+                    const response = await fetchWithTimeout(apiUrl, {
+                        method: 'POST',
+                        body: JSON.stringify(data)
+                    });
+
+                    const result = await response.json();
+                    predictionDiv.innerHTML = `
+                        <h3>Ваше предсказание:</h3>
+                        <p>${result.prediction}</p>
+                        ${result.image ? `<img src="${result.image}" alt="Визуализация предсказания">` : ''}
+                    `;
+                    predictionDiv.style.display = 'block';
+                    break;
+                } catch (error) {
+                    console.error('Ошибка:', error);
+                    retries--;
+                    if (retries > 0) {
+                        console.log(`Повторная попытка через 2 секунды. Осталось попыток: ${retries}`);
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    } else {
+                        predictionDiv.innerHTML = `
+                            <p style="color: red;">Произошла ошибка при получении предсказания. Пожалуйста, попробуйте позже.</p>
+                        `;
+                        predictionDiv.style.display = 'block';
+                    }
+                }
+            }
+
+            button.disabled = false;
+            preloader.style.display = 'none';
+        }
+    </script>
 </head>
 <body>
     <div class="form-group">
@@ -112,213 +228,5 @@
     <button id="getPrediction" onclick="getPrediction()">Получить предсказание</button>
     <div id="preloader" class="preloader"></div>
     <div id="prediction" class="prediction" style="display: none;"></div>
-
-    <script>
-        // Инициализация Telegram Web App только один раз
-        let tg;
-        if (window.Telegram && window.Telegram.WebApp) {
-            tg = window.Telegram.WebApp;
-            tg.expand();
-            tg.ready();
-        }
-
-        let currentController = null;
-
-        async function fetchWithRetry(url, options, maxRetries = 3) {
-            for (let i = 0; i < maxRetries; i++) {
-                try {
-                    console.log(`Попытка ${i + 1} из ${maxRetries}`);
-                    
-                    // Отменяем предыдущий контроллер, если он существует
-                    if (currentController) {
-                        console.log('Отмена предыдущего запроса');
-                        currentController.abort();
-                    }
-                    currentController = new AbortController();
-                    
-                    const timeoutId = setTimeout(() => {
-                        console.log('Таймаут запроса');
-                        currentController.abort();
-                        currentController = null;
-                    }, 300000); // 5 minutes timeout
-                    
-                    console.log('Отправка запроса:', {
-                        url: url,
-                        method: options.method,
-                        headers: options.headers
-                    });
-                    
-                    const response = await fetch(url, {
-                        ...options,
-                        signal: currentController.signal,
-                        headers: {
-                            ...options.headers,
-                            'Accept': 'application/json',
-                            'Cache-Control': 'no-store, no-cache, must-revalidate',
-                            'Pragma': 'no-cache'
-                        }
-                    });
-                    
-                    clearTimeout(timeoutId);
-                    currentController = null;
-                    
-                    console.log('Получен ответ:', {
-                        status: response.status,
-                        statusText: response.statusText,
-                        headers: Object.fromEntries(response.headers.entries())
-                    });
-                    
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        console.error('Ошибка ответа:', errorText);
-                        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-                    }
-                    
-                    return response;
-                } catch (error) {
-                    console.error('Ошибка запроса:', error);
-                    if (error.name === 'AbortError') {
-                        console.log('Запрос был отменен');
-                        if (i === maxRetries - 1) {
-                            throw new Error('Превышено время ожидания ответа от сервера');
-                        }
-                    } else if (i === maxRetries - 1) {
-                        throw error;
-                    }
-                    console.log(`Повторная попытка через 2 секунды. Осталось попыток: ${maxRetries - i - 1}`);
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                }
-            }
-        }
-
-        async function getPrediction() {
-            const name = document.getElementById('name').value;
-            const birthDate = document.getElementById('birthDate').value;
-            const question = document.getElementById('question').value;
-            const mode = document.getElementById('mode').value;
-            const partnerName = document.getElementById('partnerName').value;
-            const partnerBirth = document.getElementById('partnerBirth').value;
-
-            if (!name || !birthDate || !question || !mode) {
-                alert('Пожалуйста, заполните все обязательные поля');
-                return;
-            }
-
-            const button = document.getElementById('getPrediction');
-            const preloader = document.getElementById('preloader');
-            const predictionDiv = document.getElementById('prediction');
-
-            button.disabled = true;
-            preloader.style.display = 'block';
-            predictionDiv.style.display = 'none';
-
-            let updateLoaderInterval;
-
-            try {
-                const data = {
-                    name: name,
-                    birthDate: birthDate,
-                    question: question,
-                    mode: mode,
-                    partnerName: partnerName,
-                    partnerBirth: partnerBirth,
-                    step: 1
-                };
-
-                console.log('Подготовка данных для запроса:', data);
-                
-                // Установим максимальное время ожидания в 5 минут
-                const startTime = Date.now();
-                
-                // Обновляем индикатор загрузки
-                updateLoaderInterval = setInterval(() => {
-                    const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
-                    preloader.innerHTML = `Генерируем предсказание... ${elapsedTime} сек.`;
-                }, 1000);
-
-                // Формируем URL для API
-                let apiUrl;
-                if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                    apiUrl = `${window.location.protocol}//${window.location.host}/prediction`;
-                } else {
-                    // Для production всегда используем HTTPS
-                    apiUrl = 'https://telegram-mini-app.onrender.com/prediction';
-                }
-                
-                console.log('Отправка запроса на:', apiUrl);
-                const response = await fetchWithRetry(apiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'Origin': window.location.origin
-                    },
-                    credentials: 'omit',
-                    mode: 'cors',
-                    body: JSON.stringify(data)
-                });
-                
-                if (updateLoaderInterval) {
-                    clearInterval(updateLoaderInterval);
-                }
-
-                const responseData = await response.json();
-                console.log('Данные ответа:', {
-                    hasText: !!responseData.text,
-                    textLength: responseData.text?.length,
-                    hasImages: !!responseData.images,
-                    imagesCount: responseData.images?.length,
-                    hasPrompts: !!responseData.prompts,
-                    promptsCount: responseData.prompts?.length
-                });
-                
-                if (!responseData || !responseData.text) {
-                    throw new Error('Получен некорректный ответ от сервера');
-                }
-                
-                let html = `<p>${responseData.text}</p>`;
-                
-                // Add images if they exist
-                if (responseData.images && Array.isArray(responseData.images)) {
-                    console.log('Обработка изображений...');
-                    for (let i = 0; i < responseData.images.length; i++) {
-                        if (responseData.images[i]) {
-                            const imageData = responseData.images[i];
-                            console.log(`Обработка изображения ${i + 1}`);
-                            
-                            // Проверяем, является ли imageData массивом байтов или строкой base64
-                            let base64Image;
-                            if (Array.isArray(imageData)) {
-                                console.log('Преобразование массива байтов в base64');
-                                base64Image = btoa(String.fromCharCode.apply(null, new Uint8Array(imageData)));
-                            } else if (typeof imageData === 'string') {
-                                console.log('Использование строки base64');
-                                base64Image = imageData;
-                            }
-                            
-                            if (base64Image) {
-                                console.log(`Добавление изображения ${i + 1} в HTML`);
-                                html += `<img src="data:image/jpeg;base64,${base64Image}" alt="Изображение ${i + 1}">`;
-                            }
-                        }
-                    }
-                }
-
-                console.log('Отображение результата');
-                predictionDiv.innerHTML = html;
-                predictionDiv.style.display = 'block';
-            } catch (error) {
-                console.error('Ошибка:', error);
-                alert('Произошла ошибка при получении предсказания: ' + error.message);
-            } finally {
-                button.disabled = false;
-                preloader.style.display = 'none';
-                preloader.innerHTML = '';
-                if (updateLoaderInterval) {
-                    clearInterval(updateLoaderInterval);
-                }
-            }
-        }
-    </script>
 </body>
 </html> 
