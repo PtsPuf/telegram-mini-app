@@ -1,8 +1,5 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
-
-# Install necessary build dependencies
-RUN apk add --no-cache gcc musl-dev
+FROM golang:1.21 AS builder
 
 WORKDIR /app
 
@@ -19,10 +16,10 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/server
 
 # Final stage
-FROM alpine:latest
+FROM debian:bullseye-slim
 
-# Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata
+# Install ca-certificates
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Set timezone
 ENV TZ=Europe/Moscow

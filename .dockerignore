@@ -1,5 +1,8 @@
 .git
 .gitignore
 .env
-.env.example
-README.md 
+*.md
+tmp/
+.idea/
+.vscode/
+*.log 
