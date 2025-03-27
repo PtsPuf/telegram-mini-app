@@ -92,12 +92,16 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Получен запрос на /prediction")
 	log.Printf("Метод запроса: %s", r.Method)
 	log.Printf("Заголовки запроса: %v", r.Header)
+	log.Printf("URL запроса: %s", r.URL.String())
+	log.Printf("Remote Addr: %s", r.RemoteAddr)
+	log.Printf("Origin: %s", r.Header.Get("Origin"))
 
 	// Set CORS headers first
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, HEAD")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin")
 	w.Header().Set("Access-Control-Max-Age", "3600")
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
 
 	// Handle preflight OPTIONS request
 	if r.Method == "OPTIONS" {
@@ -120,8 +124,11 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set content type
+	// Set content type and no-cache headers
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 
 	// Read body
 	body, err := io.ReadAll(r.Body)

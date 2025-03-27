@@ -236,17 +236,25 @@
                     preloader.innerHTML = `Генерируем предсказание... ${elapsedTime} сек.`;
                 }, 1000);
 
-                // Получаем базовый URL из текущего location
-                const baseUrl = window.location.origin;
-                const apiUrl = `${baseUrl}/prediction`;
+                // Формируем URL для API
+                let apiUrl;
+                if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                    apiUrl = `${window.location.protocol}//${window.location.host}/prediction`;
+                } else {
+                    // Для production всегда используем HTTPS
+                    apiUrl = 'https://telegram-mini-app.onrender.com/prediction';
+                }
                 
                 console.log('Отправка запроса на:', apiUrl);
                 const response = await fetchWithRetry(apiUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Accept': 'application/json'
+                        'Accept': 'application/json',
+                        'Origin': window.location.origin
                     },
+                    credentials: 'omit',
+                    mode: 'cors',
                     body: JSON.stringify(data)
                 });
                 
