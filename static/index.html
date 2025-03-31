@@ -183,6 +183,29 @@
             
             console.log(`[DEBUG] Сформированный API URL: ${apiUrl}`);
 
+            // !!! НАЧАЛО ВРЕМЕННОГО КОДА ДЛЯ ТЕСТА GET / !!!
+            console.log('[DEBUG] Запускаем тестовый GET запрос на /');
+            fetch('https://telegram-mini-app.onrender.com/') // Отправляем GET на корень
+                .then(response => {
+                    console.log(`[DEBUG] Тестовый GET / завершен. Статус: ${response.status}`);
+                    if (!response.ok) {
+                        console.error(`[DEBUG] Тестовый GET / вернул ошибку: ${response.status}`);
+                    }
+                    // Можно добавить response.text().then(text => console.log(text)) для просмотра HTML
+                    alert(`Тестовый GET / завершен со статусом: ${response.status}`);
+                })
+                .catch(error => {
+                    console.error('[DEBUG] Ошибка тестового GET /:', error);
+                    alert(`Ошибка тестового GET /: ${error.message}`);
+                })
+                .finally(() => {
+                    // В любом случае разблокируем кнопку и скроем прелоадер после теста
+                    button.disabled = false;
+                    preloader.style.display = 'none';
+                });
+            // !!! КОНЕЦ ВРЕМЕННОГО КОДА ДЛЯ ТЕСТА GET / !!!
+            
+            /* // !!! НАЧАЛО ЗАКОММЕНТИРОВАННОГО РАБОЧЕГО КОДА !!!
             let retries = 3;
             while (retries > 0) {
                 const attempt = 4 - retries;
@@ -232,9 +255,11 @@
                     }
                 }
             }
+            */ // !!! КОНЕЦ ЗАКОММЕНТИРОВАННОГО РАБОЧЕГО КОДА !!!
 
-            button.disabled = false;
-            preloader.style.display = 'none';
+            // Этот код из finally теперь выполняется в finally тестового fetch
+            // button.disabled = false;
+            // preloader.style.display = 'none';
         }
     </script>
 </head>
