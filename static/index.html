@@ -155,16 +155,21 @@
             const apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
                 ? `${window.location.protocol}//${window.location.host}/prediction`
                 : 'https://telegram-mini-app.onrender.com/prediction';
+            
+            console.log(`[DEBUG] Сформированный API URL: ${apiUrl}`);
 
             let retries = 3;
             while (retries > 0) {
                 try {
+                    console.log(`[DEBUG] Попытка ${4 - retries} из 3. Вызов fetchWithTimeout...`);
                     const response = await fetchWithTimeout(apiUrl, {
                         method: 'POST',
                         body: JSON.stringify(data)
                     });
+                    console.log('[DEBUG] fetchWithTimeout успешно завершен.');
 
                     const result = await response.json();
+                    console.log('[DEBUG] Ответ сервера успешно разобран (JSON).');
                     predictionDiv.innerHTML = `
                         <h3>Ваше предсказание:</h3>
                         <p>${result.prediction}</p>
@@ -173,14 +178,15 @@
                     predictionDiv.style.display = 'block';
                     break;
                 } catch (error) {
-                    console.error('Ошибка:', error);
+                    console.error('Ошибка внутри цикла попыток:', error);
                     retries--;
                     if (retries > 0) {
                         console.log(`Повторная попытка через 2 секунды. Осталось попыток: ${retries}`);
                         await new Promise(resolve => setTimeout(resolve, 2000));
                     } else {
+                        console.error('[DEBUG] Попытки исчерпаны. Отображение ошибки.');
                         predictionDiv.innerHTML = `
-                            <p style="color: red;">Произошла ошибка при получении предсказания. Пожалуйста, попробуйте позже.</p>
+                            <p style="color: red;">Произошла ошибка при получении предсказания (${error.message}). Пожалуйста, попробуйте позже.</p>
                         `;
                         predictionDiv.style.display = 'block';
                     }
