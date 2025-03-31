@@ -21,67 +21,59 @@ var (
 	// StateMutex protects the States map
 	StateMutex sync.RWMutex
 
-	// For server initialization
+	// serverInstance используется только для локального запуска
 	serverInstance *http.Server
-	startOnce      sync.Once
-	serverMux      *http.ServeMux
 )
 
-// SetupAndRunServer initializes and starts the HTTP server
+// NewMux создает и возвращает настроенный ServeMux
+func NewMux() *http.ServeMux {
+	mux := http.NewServeMux()
+
+	// Serve static files
+	fs := http.FileServer(http.Dir("public"))
+	mux.Handle("/static/", http.StripPrefix("/static/", fs)) // Для CSS/JS если они в /static внутри /public
+	mux.Handle("/", fs)                                      // Отдаем index.html и другие файлы из public
+
+	// Handle prediction endpoint
+	mux.HandleFunc("/prediction", HandlePrediction)
+
+	return mux
+}
+
+// SetupAndRunServer initializes and starts the HTTP server *for local execution*
 func SetupAndRunServer() {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	log.Printf("Setting up server on port %s", port)
+	log.Printf("Setting up local server on port %s", port)
 
-	// Set up server with a custom mux
-	mux := http.NewServeMux()
-	server := &http.Server{
+	mux := NewMux() // Получаем настроенный mux
+
+	// Используем существующую переменную serverInstance
+	serverInstance = &http.Server{
 		Addr:         ":" + port,
+		Handler:      AddHeaders(mux), // Оборачиваем mux в заголовки
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 20 * time.Second,
 	}
 
-	// Serve static files
-	fs := http.FileServer(http.Dir("public"))
-	mux.Handle("/static/", http.StripPrefix("/static/", fs))
-	mux.Handle("/", fs)
-
-	// Handle prediction endpoint
-	mux.HandleFunc("/prediction", HandlePrediction)
-
-	// Set the custom mux as the server's handler
-	server.Handler = AddHeaders(mux)
-
-	log.Printf("Starting server on port %s", port)
+	log.Printf("Starting local server on port %s", port)
 	go func() {
-		if err := server.ListenAndServe(); err != nil {
-			log.Fatalf("Failed to start server: %v", err)
+		if err := serverInstance.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Failed to start local server: %v", err)
 		}
 	}()
 }
 
 // Handler is the entry point for Vercel and other HTTP requests
 func Handler(w http.ResponseWriter, r *http.Request) {
-	// Используем sync.Once для инициализации и запуска сервера ТОЛЬКО ОДИН РАЗ
-	startOnce.Do(func() {
-		log.Println("Handler: Первый запуск, вызываем SetupAndRunServer через sync.Once...")
-		SetupAndRunServer()
-		log.Println("Handler: SetupAndRunServer завершен внутри sync.Once.")
-	})
+	// Создаем новый mux для каждого запроса в serverless среде
+	mux := NewMux()
 
-	// Проверяем, что роутер инициализирован (должен быть после startOnce.Do)
-	if serverMux == nil {
-		log.Println("Критическая ошибка: serverMux не инициализирован!")
-		http.Error(w, "Internal Server Error: Router not initialized", http.StatusInternalServerError)
-		return
-	}
-
-	// Передаем запрос на обработку нашему стандартному роутеру
-	log.Printf("Handler: Передача запроса (%s %s) в serverMux", r.Method, r.URL.Path)
-	serverMux.ServeHTTP(w, r)
+	// Применяем заголовки и обрабатываем запрос
+	AddHeaders(mux).ServeHTTP(w, r)
 }
 
 // AddHeaders adds security and caching headers to all responses
