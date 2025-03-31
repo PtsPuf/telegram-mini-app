@@ -108,13 +108,8 @@
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
-                        'Cache-Control': 'no-cache, no-store, must-revalidate',
-                        'Pragma': 'no-cache',
-                        'Expires': '0',
-                        'Origin': window.location.origin,
                         ...options.headers
-                    },
-                    credentials: 'same-origin'
+                    }
                 });
 
                 clearTimeout(timeoutHandle);
@@ -128,16 +123,16 @@
 
                 return response;
             } catch (error) {
-                clearTimeout(timeoutHandle);
+                if (timeoutHandle) clearTimeout(timeoutHandle);
                 if (error.name === 'AbortError') {
                     console.warn(`[DEBUG] fetchWithTimeout: Запрос на ${url} был отменен. Причина: ${signal.reason || 'Неизвестно'}`);
-                    throw new Error(signal.reason === 'Timeout' ? 'Timeout' : 'Request aborted'); 
+                    throw new Error(signal.reason === 'Timeout' ? 'Timeout' : 'Request aborted');
                 } else {
                     console.error(`[DEBUG] fetchWithTimeout: Сетевая или другая ошибка при запросе на ${url}:`, error);
                     throw error;
                 }
             } finally {
-                if (currentController && currentController.signal === signal) { 
+                if (currentController && currentController.signal === signal) {
                     currentController = null;
                 }
             }
@@ -179,13 +174,13 @@
             // Для Vercel используем относительный путь к API
             const apiUrl = '/api/prediction';
             
-            console.log(`[DEBUG] Сформированный API URL: ${apiUrl}`);
+            console.log(`[DEBUG] Базовый API URL: ${apiUrl}`);
 
             let retries = 3;
             while (retries > 0) {
                 const attempt = 4 - retries;
                 try {
-                    console.log(`[DEBUG] Попытка ${attempt} из 3. Вызов fetchWithTimeout для ${apiUrl}...`);
+                    console.log(`[DEBUG] Попытка ${attempt} из 3. Вызов fetchWithTimeout для URL: ${apiUrl}...`);
                     const response = await fetchWithTimeout(apiUrl, {
                         method: 'POST',
                         body: JSON.stringify(data)
@@ -202,13 +197,13 @@
                     predictionDiv.style.display = 'block';
                     break;
                 } catch (error) {
-                    console.error(`[DEBUG] Попытка ${attempt}: Ошибка внутри цикла:`, error);
+                    console.error(`[DEBUG] Попытка ${attempt}: Ошибка внутри цикла fetch/retry:`, error);
                     retries--;
                     if (retries > 0) {
                         let reason = error.message;
                         if (reason === 'Timeout') reason = 'Таймаут запроса';
                         else if (reason === 'Request aborted') reason = 'Запрос отменен (возможно, новым запросом)';
-                        else if (error instanceof TypeError && error.message.includes('fetch')) reason = 'Сетевая ошибка (проверьте URL и CORS)';
+                        else if (error instanceof TypeError && error.message.includes('fetch')) reason = 'Сетевая ошибка (проверьте URL, CORS, SSL)';
                         else reason = `Неожиданная ошибка (${error.message})`;
                         
                         console.log(`[DEBUG] Попытка ${attempt} не удалась (${reason}). Повторная попытка через 2 секунды. Осталось попыток: ${retries}`);
@@ -218,8 +213,8 @@
                         let finalReason = error.message;
                         if (finalReason === 'Timeout') finalReason = 'Превышено время ожидания ответа от сервера';
                         else if (finalReason === 'Request aborted') finalReason = 'Запрос был отменен';
-                        else if (error instanceof TypeError && error.message.includes('fetch')) finalReason = 'Не удалось связаться с сервером. Проверьте соединение и URL API.';
-                        else finalReason = `Произошла ошибка (${error.message})`;
+                        else if (error instanceof TypeError && error.message.includes('fetch')) finalReason = 'Не удалось связаться с сервером. Проверьте соединение, URL API, SSL и CORS настройки.';
+                        else finalReason = `Произошла ошибка (${error.message || 'Неизвестная ошибка'})`;
 
                         predictionDiv.innerHTML = `
                             <p style="color: red;">${finalReason}. Пожалуйста, попробуйте позже.</p>
