@@ -1,4 +1,5 @@
-package main
+// Package server provides HTTP server functionality for the telegram mini app
+package server
 
 import (
 	"encoding/json"
@@ -15,55 +16,83 @@ import (
 )
 
 var (
-	states = make(map[string]*common.UserState)
-	mu     sync.RWMutex
+	// States maps user IDs to their state
+	States = make(map[string]*common.UserState)
+	// StateMutex protects the States map
+	StateMutex sync.RWMutex
+
+	// For server initialization
+	serverInstance *http.Server
+	startOnce      sync.Once
+	serverMux      *http.ServeMux
 )
 
-func startServer(port string) {
-	log.Printf("Инициализация сервера...")
-	log.Printf("Проверка переменных окружения:")
-	log.Printf("OPENROUTER_API_KEY: %v", os.Getenv("OPENROUTER_API_KEY") != "")
-	log.Printf("KANDINSKY_API_KEY: %v", os.Getenv("KANDINSKY_API_KEY") != "")
-	log.Printf("KANDINSKY_SECRET: %v", os.Getenv("KANDINSKY_SECRET") != "")
-	log.Printf("KANDINSKY_URL: %v", os.Getenv("KANDINSKY_URL") != "")
-
-	// Create a custom server with timeouts
-	server := &http.Server{
-		Addr:           ":" + port,
-		Handler:        nil,
-		ReadTimeout:    300 * time.Second, // 5 minutes
-		WriteTimeout:   300 * time.Second, // 5 minutes
-		MaxHeaderBytes: 1 << 20,           // 1MB
+// SetupAndRunServer initializes and starts the HTTP server
+func SetupAndRunServer() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
 	}
 
-	// Create a custom mux for routing
-	mux := http.NewServeMux()
+	log.Printf("Setting up server on port %s", port)
 
-	// Serve static files with custom headers
-	fs := http.FileServer(http.Dir("static"))
-	mux.Handle("/static/", addHeaders(http.StripPrefix("/static/", fs)))
-	mux.Handle("/", addHeaders(fs))
+	// Set up server with a custom mux
+	mux := http.NewServeMux()
+	server := &http.Server{
+		Addr:         ":" + port,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 20 * time.Second,
+	}
+
+	// Serve static files
+	fs := http.FileServer(http.Dir("public"))
+	mux.Handle("/static/", http.StripPrefix("/static/", fs))
+	mux.Handle("/", fs)
 
 	// Handle prediction endpoint
-	mux.HandleFunc("/prediction", handlePrediction)
+	mux.HandleFunc("/prediction", HandlePrediction)
 
 	// Set the custom mux as the server's handler
-	server.Handler = mux
+	server.Handler = AddHeaders(mux)
 
-	log.Printf("Сервер настроен и готов к запуску на порту %s", port)
-	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("Ошибка запуска сервера: %v", err)
-	}
+	log.Printf("Starting server on port %s", port)
+	go func() {
+		if err := server.ListenAndServe(); err != nil {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
 }
 
-// addHeaders adds security and caching headers to all responses
-func addHeaders(next http.Handler) http.Handler {
+// Handler is the entry point for Vercel and other HTTP requests
+func Handler(w http.ResponseWriter, r *http.Request) {
+	// Используем sync.Once для инициализации и запуска сервера ТОЛЬКО ОДИН РАЗ
+	startOnce.Do(func() {
+		log.Println("Handler: Первый запуск, вызываем SetupAndRunServer через sync.Once...")
+		SetupAndRunServer()
+		log.Println("Handler: SetupAndRunServer завершен внутри sync.Once.")
+	})
+
+	// Проверяем, что роутер инициализирован (должен быть после startOnce.Do)
+	if serverMux == nil {
+		log.Println("Критическая ошибка: serverMux не инициализирован!")
+		http.Error(w, "Internal Server Error: Router not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	// Передаем запрос на обработку нашему стандартному роутеру
+	log.Printf("Handler: Передача запроса (%s %s) в serverMux", r.Method, r.URL.Path)
+	serverMux.ServeHTTP(w, r)
+}
+
+// AddHeaders adds security and caching headers to all responses
+func AddHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Set CORS headers
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, HEAD")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin")
 		w.Header().Set("Access-Control-Max-Age", "3600")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
 
 		// Set security headers
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -88,7 +117,8 @@ func addHeaders(next http.Handler) http.Handler {
 	})
 }
 
-func handlePrediction(w http.ResponseWriter, r *http.Request) {
+// HandlePrediction processes prediction requests
+func HandlePrediction(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Получен запрос на /prediction")
 	log.Printf("Метод запроса: %s", r.Method)
 	log.Printf("Заголовки запроса: %v", r.Header)
@@ -150,7 +180,7 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Данные запроса: %+v", state)
 
 	// Get prediction
-	prediction, err := getPrediction(&state)
+	prediction, err := GetPrediction(&state)
 	if err != nil {
 		log.Printf("Ошибка получения предсказания: %v", err)
 		http.Error(w, fmt.Sprintf("Error getting prediction: %v", err), http.StatusInternalServerError)
@@ -211,7 +241,8 @@ func handlePrediction(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Успешно отправлен ответ пользователю: %s", state.Name)
 }
 
-func getPrediction(state *common.UserState) (*common.Prediction, error) {
+// GetPrediction generates a prediction based on user state
+func GetPrediction(state *common.UserState) (*common.Prediction, error) {
 	log.Printf("Начинаем генерацию предсказания для пользователя %s", state.Name)
 
 	prompt := fmt.Sprintf("Ты - опытный таролог и экстрасенс. Тебе нужно дать предсказание для человека по имени %s (родился(ась) %s). "+
@@ -235,7 +266,6 @@ func getPrediction(state *common.UserState) (*common.Prediction, error) {
 	}
 
 	log.Printf("Получен ответ от OpenRouter API, длина: %d символов", len(response))
-	log.Printf("Ответ API: %s", response)
 
 	// Ищем промпты для изображений по префиксу
 	var imagePrompts []string
@@ -252,42 +282,24 @@ func getPrediction(state *common.UserState) (*common.Prediction, error) {
 		}
 	}
 
-	text := strings.Join(textParts, "\n")
-
-	// Если не нашли промпты, пробуем другой способ - ищем последние три абзаца
-	if len(imagePrompts) < 3 {
-		log.Printf("Не найдены промпты с префиксом, пробуем альтернативный метод")
-		parts := strings.Split(response, "\n\n")
-		if len(parts) >= 4 {
-			text = strings.Join(parts[:len(parts)-3], "\n\n")
-			imagePrompts = parts[len(parts)-3:]
-		} else {
-			// Если не удалось разделить, генерируем стандартные промпты
-			log.Printf("Не удалось выделить промпты, используем стандартные")
-			imagePrompts = []string{
-				"Abstract spiritual energy in Kandinsky style with vibrant colors",
-				"Mystical symbols and patterns in Kandinsky composition",
-				"Cosmic harmony and balance in abstract Kandinsky expressionism",
-			}
-		}
-	}
-
-	// Проверяем количество промптов
+	// Дополняем массив промптов, если их меньше трех
 	for len(imagePrompts) < 3 {
-		log.Printf("Недостаточно промптов, добавляем стандартный")
-		imagePrompts = append(imagePrompts, "Abstract spiritual energy in Kandinsky style")
+		defaultPrompt := fmt.Sprintf("A mystical tarot card for %s, with abstract shapes in Kandinsky style, vibrant colors", state.Name)
+		imagePrompts = append(imagePrompts, defaultPrompt)
 	}
 
-	// Обрезаем до трех промптов
+	// Возвращаем только первые три промпта, если их больше
 	if len(imagePrompts) > 3 {
 		imagePrompts = imagePrompts[:3]
 	}
 
-	log.Printf("Финальный текст предсказания, длина: %d символов", len(text))
-	log.Printf("Промпты для изображений: %v", imagePrompts)
+	log.Printf("Извлечено промптов для изображений: %d", len(imagePrompts))
+	for i, p := range imagePrompts {
+		log.Printf("Промпт %d: %s", i+1, p)
+	}
 
 	return &common.Prediction{
-		Text:         text,
+		Text:         strings.Join(textParts, "\n"),
 		ImagePrompts: imagePrompts,
 	}, nil
 }

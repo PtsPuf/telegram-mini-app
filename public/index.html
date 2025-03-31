@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Гадалка</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--tg-theme-text-color, #000000);
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--tg-theme-button-color, #cccccc);
+            border-radius: 4px;
+            background-color: var(--tg-theme-secondary-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+        }
+        button {
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .prediction {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            background-color: var(--tg-theme-secondary-bg-color, #f5f5f5);
+        }
+        .prediction img {
+            max-width: 100%;
+            height: auto;
+            margin-top: 10px;
+            border-radius: 4px;
+        }
+        .preloader {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .preloader::after {
+            content: '';
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid var(--tg-theme-button-color, #3390ec);
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+    <script>
+        // Инициализация Telegram Web App
+        let tg = window.Telegram?.WebApp;
+        if (tg) {
+            tg.expand();
+            tg.ready();
+        }
+
+        // Глобальные переменные для управления запросами
+        let currentController = null;
+
+        async function fetchWithTimeout(url, options, timeout = 300000) {
+            if (currentController) {
+                console.warn('[DEBUG] Предыдущий запрос еще активен, отменяем его.');
+                currentController.abort('New request started');
+            }
+            currentController = new AbortController();
+            const signal = currentController.signal;
+            let timeoutHandle = null;
+
+            try {
+                console.log(`[DEBUG] fetchWithTimeout: Начинаем запрос на ${url}`);
+                timeoutHandle = setTimeout(() => {
+                    console.error(`[DEBUG] fetchWithTimeout: Таймаут ${timeout}ms сработал для ${url}`);
+                    currentController.abort('Timeout');
+                }, timeout);
+
+                const response = await fetch(url, {
+                    ...options,
+                    signal: signal,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0',
+                        'Origin': window.location.origin,
+                        ...options.headers
+                    },
+                    credentials: 'same-origin'
+                });
+
+                clearTimeout(timeoutHandle);
+                console.log(`[DEBUG] fetchWithTimeout: Получен ответ от ${url}, статус: ${response.status}`);
+
+                if (!response.ok) {
+                    const errorText = await response.text().catch(() => 'Не удалось прочитать тело ошибки');
+                    console.error(`[DEBUG] fetchWithTimeout: Ошибка HTTP ${response.status} от ${url}. Тело: ${errorText}`);
+                    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                }
+
+                return response;
+            } catch (error) {
+                clearTimeout(timeoutHandle);
+                if (error.name === 'AbortError') {
+                    console.warn(`[DEBUG] fetchWithTimeout: Запрос на ${url} был отменен. Причина: ${signal.reason || 'Неизвестно'}`);
+                    throw new Error(signal.reason === 'Timeout' ? 'Timeout' : 'Request aborted'); 
+                } else {
+                    console.error(`[DEBUG] fetchWithTimeout: Сетевая или другая ошибка при запросе на ${url}:`, error);
+                    throw error;
+                }
+            } finally {
+                if (currentController && currentController.signal === signal) { 
+                    currentController = null;
+                }
+            }
+        }
+
+        async function getPrediction() {
+            const name = document.getElementById('name').value;
+            const birthDate = document.getElementById('birthDate').value;
+            const question = document.getElementById('question').value;
+            const mode = document.getElementById('mode').value;
+            const partnerName = document.getElementById('partnerName').value;
+            const partnerBirth = document.getElementById('partnerBirth').value;
+
+            if (!name || !birthDate || !question || !mode) {
+                alert('Пожалуйста, заполните все обязательные поля');
+                return;
+            }
+
+            const button = document.getElementById('getPrediction');
+            const preloader = document.getElementById('preloader');
+            const predictionDiv = document.getElementById('prediction');
+
+            button.disabled = true;
+            preloader.style.display = 'block';
+            predictionDiv.style.display = 'none';
+            predictionDiv.innerHTML = '';
+
+            const data = {
+                name,
+                birthDate,
+                question,
+                mode,
+                partnerName,
+                partnerBirth
+            };
+
+            console.log('Отправляем запрос:', data);
+            
+            // Для Vercel используем относительный путь к API
+            const apiUrl = '/api/prediction';
+            
+            console.log(`[DEBUG] Сформированный API URL: ${apiUrl}`);
+
+            let retries = 3;
+            while (retries > 0) {
+                const attempt = 4 - retries;
+                try {
+                    console.log(`[DEBUG] Попытка ${attempt} из 3. Вызов fetchWithTimeout для ${apiUrl}...`);
+                    const response = await fetchWithTimeout(apiUrl, {
+                        method: 'POST',
+                        body: JSON.stringify(data)
+                    });
+                    console.log(`[DEBUG] Попытка ${attempt}: fetchWithTimeout успешно завершен.`);
+
+                    const result = await response.json();
+                    console.log(`[DEBUG] Попытка ${attempt}: Ответ сервера успешно разобран (JSON).`);
+                    predictionDiv.innerHTML = `
+                        <h3>Ваше предсказание:</h3>
+                        <p>${result.prediction}</p>
+                        ${result.image ? `<img src="${result.image}" alt="Визуализация предсказания">` : ''}
+                    `;
+                    predictionDiv.style.display = 'block';
+                    break;
+                } catch (error) {
+                    console.error(`[DEBUG] Попытка ${attempt}: Ошибка внутри цикла:`, error);
+                    retries--;
+                    if (retries > 0) {
+                        let reason = error.message;
+                        if (reason === 'Timeout') reason = 'Таймаут запроса';
+                        else if (reason === 'Request aborted') reason = 'Запрос отменен (возможно, новым запросом)';
+                        else if (error instanceof TypeError && error.message.includes('fetch')) reason = 'Сетевая ошибка (проверьте URL и CORS)';
+                        else reason = `Неожиданная ошибка (${error.message})`;
+                        
+                        console.log(`[DEBUG] Попытка ${attempt} не удалась (${reason}). Повторная попытка через 2 секунды. Осталось попыток: ${retries}`);
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    } else {
+                        console.error('[DEBUG] Попытки исчерпаны. Отображение финальной ошибки.');
+                        let finalReason = error.message;
+                        if (finalReason === 'Timeout') finalReason = 'Превышено время ожидания ответа от сервера';
+                        else if (finalReason === 'Request aborted') finalReason = 'Запрос был отменен';
+                        else if (error instanceof TypeError && error.message.includes('fetch')) finalReason = 'Не удалось связаться с сервером. Проверьте соединение и URL API.';
+                        else finalReason = `Произошла ошибка (${error.message})`;
+
+                        predictionDiv.innerHTML = `
+                            <p style="color: red;">${finalReason}. Пожалуйста, попробуйте позже.</p>
+                        `;
+                        predictionDiv.style.display = 'block';
+                    }
+                }
+            }
+
+            button.disabled = false;
+            preloader.style.display = 'none';
+        }
+    </script>
+</head>
+<body>
+    <div class="form-group">
+        <label for="name">Ваше имя:</label>
+        <input type="text" id="name" name="name" required>
+    </div>
+    <div class="form-group">
+        <label for="birthDate">Дата рождения:</label>
+        <input type="text" id="birthDate" name="birthDate" placeholder="ДД.ММ.ГГГГ" required>
+    </div>
+    <div class="form-group">
+        <label for="question">Ваш вопрос:</label>
+        <input type="text" id="question" name="question" required>
+    </div>
+    <div class="form-group">
+        <label for="mode">Сфера вопроса:</label>
+        <select id="mode" name="mode" required>
+            <option value="">Выберите сферу</option>
+            <option value="Любовь">Любовь</option>
+            <option value="Карьера">Карьера</option>
+            <option value="Здоровье">Здоровье</option>
+            <option value="Финансы">Финансы</option>
+            <option value="Семья">Семья</option>
+            <option value="Другое">Другое</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="partnerName">Имя партнера (если применимо):</label>
+        <input type="text" id="partnerName" name="partnerName">
+    </div>
+    <div class="form-group">
+        <label for="partnerBirth">Дата рождения партнера (если применимо):</label>
+        <input type="text" id="partnerBirth" name="partnerBirth" placeholder="ДД.ММ.ГГГГ">
+    </div>
+    <button id="getPrediction" onclick="getPrediction()">Получить предсказание</button>
+    <div id="preloader" class="preloader"></div>
+    <div id="prediction" class="prediction" style="display: none;"></div>
+</body>
+</html> 
