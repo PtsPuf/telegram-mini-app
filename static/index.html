@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Гадалка</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js?v={Date.now()}"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -94,15 +94,9 @@
             }
             currentController = new AbortController();
             const signal = currentController.signal;
-            let timeoutHandle = null; // <-- Добавлено
 
             try {
                 console.log(`[DEBUG] fetchWithTimeout: Начинаем запрос на ${url}`);
-                timeoutHandle = setTimeout(() => {
-                    console.error(`[DEBUG] fetchWithTimeout: Таймаут ${timeout}ms сработал для ${url}`);
-                    currentController.abort('Timeout');
-                }, timeout);
-
                 const response = await fetch(url, {
                     ...options,
                     signal: signal, // Используем сигнал из контроллера
@@ -116,7 +110,6 @@
                     }
                 });
 
-                clearTimeout(timeoutHandle); // Отменяем таймаут, если fetch завершился
                 console.log(`[DEBUG] fetchWithTimeout: Получен ответ от ${url}, статус: ${response.status}`);
 
                 if (!response.ok) {
@@ -127,7 +120,6 @@
 
                 return response;
             } catch (error) {
-                clearTimeout(timeoutHandle); // Также отменяем таймаут в случае ошибки
                 if (error.name === 'AbortError') {
                     console.warn(`[DEBUG] fetchWithTimeout: Запрос на ${url} был отменен. Причина: ${signal.reason || 'Неизвестно'}`);
                     // Перевыбрасываем ошибку, чтобы ее поймал getPrediction
@@ -164,7 +156,7 @@
             button.disabled = true;
             preloader.style.display = 'block';
             predictionDiv.style.display = 'none';
-            predictionDiv.innerHTML = ''; // Очищаем предыдущий результат/ошибку
+            predictionDiv.innerHTML = '';
 
             const data = {
                 name,
@@ -177,18 +169,15 @@
 
             console.log('Отправляем запрос:', data);
 
-            const apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-                ? `${window.location.protocol}//${window.location.host}/prediction`
-                : 'https://telegram-mini-app.onrender.com/prediction';
+            const apiUrl = 'https://telegram-mini-app.onrender.com/prediction';
             
-            console.log(`[DEBUG] Сформированный API URL: ${apiUrl}`);
+            console.log(`[DEBUG] API URL: ${apiUrl}`);
 
-            // !!! НАЧАЛО РАСКОММЕНТИРОВАННОГО РАБОЧЕГО КОДА !!!
             let retries = 3;
             while (retries > 0) {
                 const attempt = 4 - retries;
                 try {
-                    console.log(`[DEBUG] Попытка ${attempt} из 3. Вызов fetchWithTimeout для ${apiUrl}...`);
+                    console.log(`[DEBUG] Попытка ${attempt} из 3. Вызов fetchWithTimeout для URL: ${apiUrl}...`);
                     const response = await fetchWithTimeout(apiUrl, {
                         method: 'POST',
                         body: JSON.stringify(data)
@@ -199,16 +188,19 @@
                     console.log(`[DEBUG] Попытка ${attempt}: Ответ сервера успешно разобран (JSON).`);
                     predictionDiv.innerHTML = `
                         <h3>Ваше предсказание:</h3>
-                        <p>${result.prediction}</p>
-                        ${result.image ? `<img src="${result.image}" alt="Визуализация предсказания">` : ''}
+                        <p>${result.Text}</p>
+                        ${result.Images && result.Images.length > 0 ? 
+                            result.Images.map((imgData, index) => 
+                                `<img src="data:image/jpeg;base64,${imgData}" alt="Визуализация ${index + 1}">`
+                            ).join('') 
+                            : ''}
                     `;
                     predictionDiv.style.display = 'block';
-                    break; // Успех, выходим из цикла
+                    break;
                 } catch (error) {
-                    console.error(`[DEBUG] Попытка ${attempt}: Ошибка внутри цикла:`, error);
+                    console.error(`[DEBUG] Попытка ${attempt}: Ошибка внутри цикла fetch/retry:`, error);
                     retries--;
                     if (retries > 0) {
-                        // Определяем причину ошибки для лога
                         let reason = error.message;
                         if (reason === 'Timeout') reason = 'Таймаут запроса';
                         else if (reason === 'Request aborted') reason = 'Запрос отменен (возможно, новым запросом)';
@@ -219,7 +211,6 @@
                         await new Promise(resolve => setTimeout(resolve, 2000));
                     } else {
                         console.error('[DEBUG] Попытки исчерпаны. Отображение финальной ошибки.');
-                        // Определяем финальную причину ошибки
                         let finalReason = error.message;
                         if (finalReason === 'Timeout') finalReason = 'Превышено время ожидания ответа от сервера';
                         else if (finalReason === 'Request aborted') finalReason = 'Запрос был отменен';
@@ -233,9 +224,7 @@
                     }
                 }
             }
-            // !!! КОНЕЦ РАСКОММЕНТИРОВАННОГО РАБОЧЕГО КОДА !!!
 
-            // Этот код выполняется после цикла while (либо после break, либо после исчерпания попыток)
             button.disabled = false;
             preloader.style.display = 'none';
         }

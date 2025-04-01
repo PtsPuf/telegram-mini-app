@@ -29,10 +29,10 @@ var (
 func NewMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
-	// Serve static files
-	fs := http.FileServer(http.Dir("public"))
-	mux.Handle("/static/", http.StripPrefix("/static/", fs)) // Для CSS/JS если они в /static внутри /public
-	mux.Handle("/", fs)                                      // Отдаем index.html и другие файлы из public
+	// Serve static files - ИСПОЛЬЗУЕМ "static"
+	fs := http.FileServer(http.Dir("static"))
+	mux.Handle("/static/", http.StripPrefix("/static/", fs))
+	mux.Handle("/", fs) // Отдаем index.html и другие файлы из static
 
 	// Handle prediction endpoint
 	mux.HandleFunc("/prediction", HandlePrediction)
