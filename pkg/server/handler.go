@@ -49,12 +49,11 @@ func SetupAndRunServer() {
 
 	log.Printf("Setting up local server on port %s", port)
 
-	mux := NewMux() // Получаем настроенный mux
+	mux := NewMux()
 
-	// Используем существующую переменную serverInstance
 	serverInstance = &http.Server{
 		Addr:         ":" + port,
-		Handler:      AddHeaders(mux), // Оборачиваем mux в заголовки
+		Handler:      AddHeaders(mux),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 20 * time.Second,
 	}
@@ -79,31 +78,47 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 // AddHeaders adds security and caching headers to all responses
 func AddHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Set CORS headers
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		// Определяем разрешенный источник
+		allowedOrigin := "https://ptspuf.github.io"
+		// Если есть заголовок Origin и он совпадает, устанавливаем его
+		// Иначе можно установить "*" для тестов, но НЕ для продакшена
+		// Или оставить пустым, чтобы браузер сам решил (не рекомендуется)
+		origin := r.Header.Get("Origin")
+		if origin == allowedOrigin {
+			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+		} else {
+			// Для локальных тестов или если источник неизвестен, можно разрешить все
+			// НО БУДЬТЕ ОСТОРОЖНЫ В ПРОДАКШЕНЕ
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			log.Printf("[CORS Warning] Request origin '%s' is not '%s'. Allowing '*' for now.", origin, allowedOrigin)
+		}
+
+		// Остальные CORS заголовки
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, HEAD")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin")
-		w.Header().Set("Access-Control-Max-Age", "3600")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Max-Age", "3600")
 
-		// Set security headers
+		// Vary: Origin - сообщаем кэшам, что ответ зависит от заголовка Origin
+		w.Header().Add("Vary", "Origin")
+
+		// Handle preflight OPTIONS request
+		if r.Method == "OPTIONS" {
+			log.Printf("[CORS] Handling preflight OPTIONS request from origin: %s", origin)
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Устанавливаем остальные заголовки (Security, Cache-Control)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Content-Security-Policy", "default-src 'self' https://telegram.org; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://telegram.org;")
 		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-
-		// Set caching headers
 		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
-
-		// Handle preflight OPTIONS request
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
 
 		next.ServeHTTP(w, r)
 	})

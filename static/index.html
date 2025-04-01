@@ -117,7 +117,7 @@
                     }
                 });
                 
-                clearTimeout(timeoutHandle); // <-- ВОССТАНОВЛЕНО: Отменяем таймаут, если fetch завершился ДО таймаута
+                clearTimeout(timeoutHandle); // Отменяем таймаут при успехе
 
                 console.log(`[DEBUG] fetchWithTimeout: Получен ответ от ${url}, статус: ${response.status}`);
 
@@ -129,7 +129,12 @@
 
                 return response;
             } catch (error) {
-                clearTimeout(timeoutHandle); // <-- ВОССТАНОВЛЕНО: Отменяем таймаут также в случае ЛЮБОЙ ошибки fetch
+                // Добавляем try-catch вокруг clearTimeout здесь
+                try {
+                    if (timeoutHandle) clearTimeout(timeoutHandle); 
+                } catch (clearError) {
+                    console.warn("[DEBUG] Ошибка при попытке очистить таймаут (возможно, ReferenceError из-за кэша):", clearError);
+                }
                 
                 if (error.name === 'AbortError') {
                     console.warn(`[DEBUG] fetchWithTimeout: Запрос на ${url} был отменен. Причина: ${signal.reason || 'Неизвестно'}`);
@@ -178,17 +183,17 @@
 
             console.log('Отправляем запрос:', data);
 
-            // !!! ВРЕМЕННО ИСПОЛЬЗУЕМ HTTP ДЛЯ ДИАГНОСТИКИ !!!
-            const baseApiUrl = 'http://telegram-mini-app.onrender.com/prediction';
+            // !!! ВОЗВРАЩАЕМ HTTPS !!!
+            const baseApiUrl = 'https://telegram-mini-app.onrender.com/prediction';
             
-            console.log(`[DEBUG][HTTP TEST] Базовый API URL: ${baseApiUrl}`);
+            console.log(`[DEBUG] Базовый API URL: ${baseApiUrl}`);
 
             let retries = 3;
             while (retries > 0) {
                 const attempt = 4 - retries;
                 const apiUrlWithCacheBust = baseApiUrl + '?t=' + Date.now();
                 try {
-                    console.log(`[DEBUG][HTTP TEST] Попытка ${attempt} из 3. Вызов fetchWithTimeout для URL: ${apiUrlWithCacheBust}...`);
+                    console.log(`[DEBUG] Попытка ${attempt} из 3. Вызов fetchWithTimeout для URL: ${apiUrlWithCacheBust}...`);
                     const response = await fetchWithTimeout(apiUrlWithCacheBust, {
                         method: 'POST',
                         body: JSON.stringify(data)
@@ -208,7 +213,7 @@
                     predictionDiv.style.display = 'block';
                     break;
                 } catch (error) {
-                    console.error(`[DEBUG][HTTP TEST] Попытка ${attempt}: Ошибка внутри цикла fetch/retry:`, error.name, error.message, error);
+                    console.error(`[DEBUG] Попытка ${attempt}: Ошибка внутри цикла fetch/retry:`, error.name, error.message, error);
                     retries--;
                     if (retries > 0) {
                         let reason = error.message;
@@ -216,10 +221,10 @@
                         else if (reason === 'Request aborted') reason = 'Запрос отменен (возможно, новым запросом)';
                         else if (error instanceof TypeError && error.message.includes('fetch')) reason = 'Сетевая ошибка (проверьте URL, CORS, SSL)';
                         else reason = `Неожиданная ошибка (${error.message})`;
-                        console.log(`[DEBUG][HTTP TEST] Попытка ${attempt} не удалась (${reason}). Повторная попытка через 2 секунды. Осталось попыток: ${retries}`);
+                        console.log(`[DEBUG] Попытка ${attempt} не удалась (${reason}). Повторная попытка через 2 секунды. Осталось попыток: ${retries}`);
                         await new Promise(resolve => setTimeout(resolve, 2000));
                     } else {
-                        console.error('[DEBUG][HTTP TEST] Попытки исчерпаны. Отображение финальной ошибки.');
+                        console.error('[DEBUG] Попытки исчерпаны. Отображение финальной ошибки.');
                         let finalReason = error.message;
                         if (finalReason === 'Timeout') finalReason = 'Превышено время ожидания ответа от сервера';
                         else if (finalReason === 'Request aborted') finalReason = 'Запрос был отменен';
