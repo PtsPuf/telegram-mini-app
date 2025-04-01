@@ -94,15 +94,16 @@
             }
             currentController = new AbortController();
             const signal = currentController.signal;
-            let timeoutHandle = null; // Объявляем переменную для ID таймаута
+            let timeoutHandle = null; 
 
             try {
                 console.log(`[DEBUG] fetchWithTimeout: Начинаем запрос на ${url}`);
-                // Устанавливаем таймаут
+                console.log("[DEBUG] Устанавливаем таймаут...");
                 timeoutHandle = setTimeout(() => {
-                    console.error(`[DEBUG] fetchWithTimeout: Таймаут ${timeout}ms сработал для ${url}`);
-                    currentController.abort('Timeout'); // Отменяем fetch по таймауту
+                    console.error(`[DEBUG] >>> Сработал колбэк setTimeout для таймаута ${timeout}ms запроса к ${url}`);
+                    currentController.abort('Timeout');
                 }, timeout);
+                 console.log(`[DEBUG] Таймаут установлен, ID: ${timeoutHandle}`);
 
                 const response = await fetch(url, {
                     ...options,
@@ -117,7 +118,9 @@
                     }
                 });
                 
-                clearTimeout(timeoutHandle); // Отменяем таймаут при успехе
+                console.log(`[DEBUG] fetch завершился до таймаута. Очищаем таймаут ID: ${timeoutHandle}`);
+                clearTimeout(timeoutHandle);
+                console.log(`[DEBUG] Таймаут ID ${timeoutHandle} очищен после успешного fetch.`);
 
                 console.log(`[DEBUG] fetchWithTimeout: Получен ответ от ${url}, статус: ${response.status}`);
 
@@ -129,11 +132,17 @@
 
                 return response;
             } catch (error) {
-                // Добавляем try-catch вокруг clearTimeout здесь
+                console.log(`[DEBUG] Входим в блок catch fetchWithTimeout. Очищаем таймаут ID: ${timeoutHandle}`);
                 try {
-                    if (timeoutHandle) clearTimeout(timeoutHandle); 
+                    if (timeoutHandle) {
+                         console.log(`[DEBUG] Пытаемся очистить таймаут ID ${timeoutHandle} внутри catch...`);
+                         clearTimeout(timeoutHandle);
+                         console.log(`[DEBUG] Таймаут ID ${timeoutHandle} очищен внутри catch.`);
+                    } else {
+                         console.log("[DEBUG] timeoutHandle уже null или undefined внутри catch, очистка не требуется.");
+                    }
                 } catch (clearError) {
-                    console.warn("[DEBUG] Ошибка при попытке очистить таймаут (возможно, ReferenceError из-за кэша):", clearError);
+                    console.warn("[DEBUG] Ошибка при попытке очистить таймаут в catch:", clearError);
                 }
                 
                 if (error.name === 'AbortError') {

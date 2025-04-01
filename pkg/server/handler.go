@@ -78,20 +78,22 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 // AddHeaders adds security and caching headers to all responses
 func AddHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Определяем разрешенный источник
-		allowedOrigin := "https://ptspuf.github.io"
-		// Если есть заголовок Origin и он совпадает, устанавливаем его
-		// Иначе можно установить "*" для тестов, но НЕ для продакшена
-		// Или оставить пустым, чтобы браузер сам решил (не рекомендуется)
 		origin := r.Header.Get("Origin")
+		log.Printf("[CORS Debug] Received Origin header: %s", origin)
+
+		// !!! ВРЕМЕННО РАЗРЕШАЕМ ВСЕ ИСТОЧНИКИ ДЛЯ ДИАГНОСТИКИ CORS !!!
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		log.Println("[CORS Debug] Set Access-Control-Allow-Origin: * (DEBUGGING)")
+
+		/* --- Старая проверка Origin (закомментирована для теста) ---
+		allowedOrigin := "https://ptspuf.github.io"
 		if origin == allowedOrigin {
 			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 		} else {
-			// Для локальных тестов или если источник неизвестен, можно разрешить все
-			// НО БУДЬТЕ ОСТОРОЖНЫ В ПРОДАКШЕНЕ
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			log.Printf("[CORS Warning] Request origin '%s' is not '%s'. Allowing '*' for now.", origin, allowedOrigin)
 		}
+		*/
 
 		// Остальные CORS заголовки
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, HEAD")
@@ -99,17 +101,16 @@ func AddHeaders(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Max-Age", "3600")
 
-		// Vary: Origin - сообщаем кэшам, что ответ зависит от заголовка Origin
 		w.Header().Add("Vary", "Origin")
 
 		// Handle preflight OPTIONS request
 		if r.Method == "OPTIONS" {
-			log.Printf("[CORS] Handling preflight OPTIONS request from origin: %s", origin)
+			log.Printf("[CORS Debug] Handling preflight OPTIONS request from origin: %s", origin)
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 
-		// Устанавливаем остальные заголовки (Security, Cache-Control)
+		// ... (Установка остальных заголовков Security, Cache-Control) ...
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
@@ -126,77 +127,75 @@ func AddHeaders(next http.Handler) http.Handler {
 
 // HandlePrediction processes prediction requests
 func HandlePrediction(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Получен запрос на /prediction")
-	log.Printf("Метод запроса: %s", r.Method)
-	log.Printf("Заголовки запроса: %v", r.Header)
-	log.Printf("URL запроса: %s", r.URL.String())
-	log.Printf("Remote Addr: %s", r.RemoteAddr)
-	log.Printf("Origin: %s", r.Header.Get("Origin"))
+	log.Printf("HandlePrediction: Получен запрос на /prediction")
+	log.Printf("HandlePrediction: Метод запроса: %s", r.Method)
+	// --- УБИРАЕМ ДУБЛИРУЮЩИЕСЯ CORS ЗАГОЛОВКИ ---
+	/*
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, HEAD")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin")
+		w.Header().Set("Access-Control-Max-Age", "3600")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+	*/
 
-	// Set CORS headers first
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, HEAD")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin")
-	w.Header().Set("Access-Control-Max-Age", "3600")
-	w.Header().Set("Access-Control-Allow-Credentials", "true")
-
-	// Handle preflight OPTIONS request
+	// Handle preflight OPTIONS request (ЭТО УЖЕ ДЕЛАЕТСЯ В AddHeaders, но оставим на всякий случай, хотя он не должен сюда дойти)
 	if r.Method == "OPTIONS" {
-		log.Printf("Обработка OPTIONS запроса")
+		log.Printf("HandlePrediction: Обработка OPTIONS запроса (дублирующая проверка)")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
 	// Handle HEAD request
 	if r.Method == "HEAD" {
-		log.Printf("Обработка HEAD запроса")
+		// ... (код обработки HEAD)
+		log.Printf("HandlePrediction: Обработка HEAD запроса")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
 	if r.Method != "POST" {
-		log.Printf("Неподдерживаемый метод: %s", r.Method)
+		// ... (код обработки не POST)
+		log.Printf("HandlePrediction: Неподдерживаемый метод: %s", r.Method)
 		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Set content type and no-cache headers
+	// Устанавливаем ЗАГОЛОВКИ ОТВЕТА (не CORS)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
 
-	// Read body
+	// ... (остальная логика чтения тела, вызова GetPrediction, отправки ответа) ...
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Printf("Ошибка чтения тела запроса: %v", err)
+		log.Printf("HandlePrediction: Ошибка чтения тела запроса: %v", err)
 		http.Error(w, "Error reading request body", http.StatusBadRequest)
 		return
 	}
-	log.Printf("Тело запроса: %s", string(body))
+	log.Printf("HandlePrediction: Тело запроса: %s", string(body))
 
 	var state common.UserState
 	if err := json.Unmarshal(body, &state); err != nil {
-		log.Printf("Ошибка декодирования JSON: %v", err)
+		log.Printf("HandlePrediction: Ошибка декодирования JSON: %v", err)
 		http.Error(w, "Invalid JSON in request body", http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("Получен запрос на предсказание для пользователя: %s", state.Name)
-	log.Printf("Данные запроса: %+v", state)
+	log.Printf("HandlePrediction: Получен запрос на предсказание для пользователя: %s", state.Name)
+	log.Printf("HandlePrediction: Данные запроса: %+v", state)
 
-	// Get prediction
 	prediction, err := GetPrediction(&state)
 	if err != nil {
-		log.Printf("Ошибка получения предсказания: %v", err)
+		log.Printf("HandlePrediction: Ошибка получения предсказания: %v", err)
 		http.Error(w, fmt.Sprintf("Error getting prediction: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Сгенерировано предсказание для пользователя: %s", state.Name)
+	log.Printf("HandlePrediction: Сгенерировано предсказание для пользователя: %s", state.Name)
 
-	// Generate images
+	// ... (генерация изображений)
 	var wg sync.WaitGroup
 	var imageErrors []error
 	images := make([][]byte, 3)
@@ -236,16 +235,16 @@ func HandlePrediction(w http.ResponseWriter, r *http.Request) {
 
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
-		log.Printf("Ошибка кодирования ответа: %v", err)
+		log.Printf("HandlePrediction: Ошибка кодирования ответа: %v", err)
 		http.Error(w, "Error encoding response", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Отправка ответа пользователю: %s", state.Name)
-	log.Printf("Размер ответа: %d байт", len(responseJSON))
+	log.Printf("HandlePrediction: Отправка ответа пользователю: %s", state.Name)
+	log.Printf("HandlePrediction: Размер ответа: %d байт", len(responseJSON))
 
 	w.Write(responseJSON)
-	log.Printf("Успешно отправлен ответ пользователю: %s", state.Name)
+	log.Printf("HandlePrediction: Успешно отправлен ответ пользователю: %s", state.Name)
 }
 
 // GetPrediction generates a prediction based on user state
