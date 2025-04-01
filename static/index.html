@@ -178,24 +178,23 @@
 
             console.log('Отправляем запрос:', data);
 
-            const baseApiUrl = 'https://telegram-mini-app.onrender.com/prediction';
+            // !!! ВРЕМЕННО ИСПОЛЬЗУЕМ HTTP ДЛЯ ДИАГНОСТИКИ !!!
+            const baseApiUrl = 'http://telegram-mini-app.onrender.com/prediction';
             
-            console.log(`[DEBUG] Базовый API URL: ${baseApiUrl}`);
+            console.log(`[DEBUG][HTTP TEST] Базовый API URL: ${baseApiUrl}`);
 
             let retries = 3;
             while (retries > 0) {
                 const attempt = 4 - retries;
-                // Добавляем cache-busting параметр
                 const apiUrlWithCacheBust = baseApiUrl + '?t=' + Date.now();
                 try {
-                    console.log(`[DEBUG] Попытка ${attempt} из 3. Вызов fetchWithTimeout для URL: ${apiUrlWithCacheBust}...`);
-                    const response = await fetchWithTimeout(apiUrlWithCacheBust, { // Используем URL с параметром
+                    console.log(`[DEBUG][HTTP TEST] Попытка ${attempt} из 3. Вызов fetchWithTimeout для URL: ${apiUrlWithCacheBust}...`);
+                    const response = await fetchWithTimeout(apiUrlWithCacheBust, {
                         method: 'POST',
                         body: JSON.stringify(data)
                     });
                     console.log(`[DEBUG] Попытка ${attempt}: fetchWithTimeout успешно завершен.`);
-
-                    const result = await response.json(); // Попытка разобрать JSON
+                    const result = await response.json();
                     console.log(`[DEBUG] Попытка ${attempt}: Ответ сервера успешно разобран (JSON).`);
                     predictionDiv.innerHTML = `
                         <h3>Ваше предсказание:</h3>
@@ -209,21 +208,18 @@
                     predictionDiv.style.display = 'block';
                     break;
                 } catch (error) {
-                    // Более детальное логирование ошибки
-                    console.error(`[DEBUG] Попытка ${attempt}: Ошибка внутри цикла fetch/retry:`, error.name, error.message, error);
+                    console.error(`[DEBUG][HTTP TEST] Попытка ${attempt}: Ошибка внутри цикла fetch/retry:`, error.name, error.message, error);
                     retries--;
                     if (retries > 0) {
-                         // ... (определение причины и ожидание) ...
-                         let reason = error.message;
+                        let reason = error.message;
                         if (reason === 'Timeout') reason = 'Таймаут запроса';
                         else if (reason === 'Request aborted') reason = 'Запрос отменен (возможно, новым запросом)';
                         else if (error instanceof TypeError && error.message.includes('fetch')) reason = 'Сетевая ошибка (проверьте URL, CORS, SSL)';
                         else reason = `Неожиданная ошибка (${error.message})`;
-                        console.log(`[DEBUG] Попытка ${attempt} не удалась (${reason}). Повторная попытка через 2 секунды. Осталось попыток: ${retries}`);
+                        console.log(`[DEBUG][HTTP TEST] Попытка ${attempt} не удалась (${reason}). Повторная попытка через 2 секунды. Осталось попыток: ${retries}`);
                         await new Promise(resolve => setTimeout(resolve, 2000));
                     } else {
-                        console.error('[DEBUG] Попытки исчерпаны. Отображение финальной ошибки.');
-                        // ... (отображение финальной ошибки) ...
+                        console.error('[DEBUG][HTTP TEST] Попытки исчерпаны. Отображение финальной ошибки.');
                         let finalReason = error.message;
                         if (finalReason === 'Timeout') finalReason = 'Превышено время ожидания ответа от сервера';
                         else if (finalReason === 'Request aborted') finalReason = 'Запрос был отменен';
@@ -234,7 +230,6 @@
                         `;
                         predictionDiv.style.display = 'block';
                     }
-                    // Если ошибка timeoutId все еще тут - это точно кэш или внешняя проблема
                 }
             }
 
