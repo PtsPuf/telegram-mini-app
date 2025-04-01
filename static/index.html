@@ -94,21 +94,30 @@
             }
             currentController = new AbortController();
             const signal = currentController.signal;
+            let timeoutHandle = null; // Объявляем переменную для ID таймаута
 
             try {
                 console.log(`[DEBUG] fetchWithTimeout: Начинаем запрос на ${url}`);
+                // Устанавливаем таймаут
+                timeoutHandle = setTimeout(() => {
+                    console.error(`[DEBUG] fetchWithTimeout: Таймаут ${timeout}ms сработал для ${url}`);
+                    currentController.abort('Timeout'); // Отменяем fetch по таймауту
+                }, timeout);
+
                 const response = await fetch(url, {
                     ...options,
-                    signal: signal, // Используем сигнал из контроллера
+                    signal: signal, 
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
-                        'Cache-Control': 'no-cache, no-store, must-revalidate', // Добавлено no-cache
-                        'Pragma': 'no-cache', // Добавлено Pragma
-                        'Expires': '0', // Добавлено Expires
+                        'Cache-Control': 'no-cache, no-store, must-revalidate', 
+                        'Pragma': 'no-cache', 
+                        'Expires': '0', 
                         ...options.headers
                     }
                 });
+                
+                clearTimeout(timeoutHandle); // <-- ВОССТАНОВЛЕНО: Отменяем таймаут, если fetch завершился ДО таймаута
 
                 console.log(`[DEBUG] fetchWithTimeout: Получен ответ от ${url}, статус: ${response.status}`);
 
@@ -120,16 +129,16 @@
 
                 return response;
             } catch (error) {
+                clearTimeout(timeoutHandle); // <-- ВОССТАНОВЛЕНО: Отменяем таймаут также в случае ЛЮБОЙ ошибки fetch
+                
                 if (error.name === 'AbortError') {
                     console.warn(`[DEBUG] fetchWithTimeout: Запрос на ${url} был отменен. Причина: ${signal.reason || 'Неизвестно'}`);
-                    // Перевыбрасываем ошибку, чтобы ее поймал getPrediction
                     throw new Error(signal.reason === 'Timeout' ? 'Timeout' : 'Request aborted'); 
                 } else {
                     console.error(`[DEBUG] fetchWithTimeout: Сетевая или другая ошибка при запросе на ${url}:`, error);
-                    throw error; // Перевыбрасываем другие ошибки
+                    throw error; 
                 }
             } finally {
-                // Убираем ссылку на контроллер только если это был тот же контроллер, что мы создали
                 if (currentController && currentController.signal === signal) { 
                     currentController = null;
                 }
@@ -169,22 +178,24 @@
 
             console.log('Отправляем запрос:', data);
 
-            const apiUrl = 'https://telegram-mini-app.onrender.com/prediction';
+            const baseApiUrl = 'https://telegram-mini-app.onrender.com/prediction';
             
-            console.log(`[DEBUG] API URL: ${apiUrl}`);
+            console.log(`[DEBUG] Базовый API URL: ${baseApiUrl}`);
 
             let retries = 3;
             while (retries > 0) {
                 const attempt = 4 - retries;
+                // Добавляем cache-busting параметр
+                const apiUrlWithCacheBust = baseApiUrl + '?t=' + Date.now();
                 try {
-                    console.log(`[DEBUG] Попытка ${attempt} из 3. Вызов fetchWithTimeout для URL: ${apiUrl}...`);
-                    const response = await fetchWithTimeout(apiUrl, {
+                    console.log(`[DEBUG] Попытка ${attempt} из 3. Вызов fetchWithTimeout для URL: ${apiUrlWithCacheBust}...`);
+                    const response = await fetchWithTimeout(apiUrlWithCacheBust, { // Используем URL с параметром
                         method: 'POST',
                         body: JSON.stringify(data)
                     });
                     console.log(`[DEBUG] Попытка ${attempt}: fetchWithTimeout успешно завершен.`);
 
-                    const result = await response.json();
+                    const result = await response.json(); // Попытка разобрать JSON
                     console.log(`[DEBUG] Попытка ${attempt}: Ответ сервера успешно разобран (JSON).`);
                     predictionDiv.innerHTML = `
                         <h3>Ваше предсказание:</h3>
@@ -198,30 +209,32 @@
                     predictionDiv.style.display = 'block';
                     break;
                 } catch (error) {
-                    console.error(`[DEBUG] Попытка ${attempt}: Ошибка внутри цикла fetch/retry:`, error);
+                    // Более детальное логирование ошибки
+                    console.error(`[DEBUG] Попытка ${attempt}: Ошибка внутри цикла fetch/retry:`, error.name, error.message, error);
                     retries--;
                     if (retries > 0) {
-                        let reason = error.message;
+                         // ... (определение причины и ожидание) ...
+                         let reason = error.message;
                         if (reason === 'Timeout') reason = 'Таймаут запроса';
                         else if (reason === 'Request aborted') reason = 'Запрос отменен (возможно, новым запросом)';
-                        else if (error instanceof TypeError && error.message.includes('fetch')) reason = 'Сетевая ошибка (проверьте URL и CORS)';
+                        else if (error instanceof TypeError && error.message.includes('fetch')) reason = 'Сетевая ошибка (проверьте URL, CORS, SSL)';
                         else reason = `Неожиданная ошибка (${error.message})`;
-                        
                         console.log(`[DEBUG] Попытка ${attempt} не удалась (${reason}). Повторная попытка через 2 секунды. Осталось попыток: ${retries}`);
                         await new Promise(resolve => setTimeout(resolve, 2000));
                     } else {
                         console.error('[DEBUG] Попытки исчерпаны. Отображение финальной ошибки.');
+                        // ... (отображение финальной ошибки) ...
                         let finalReason = error.message;
                         if (finalReason === 'Timeout') finalReason = 'Превышено время ожидания ответа от сервера';
                         else if (finalReason === 'Request aborted') finalReason = 'Запрос был отменен';
-                        else if (error instanceof TypeError && error.message.includes('fetch')) finalReason = 'Не удалось связаться с сервером. Проверьте соединение и URL API.';
-                        else finalReason = `Произошла ошибка (${error.message})`;
-
+                        else if (error instanceof TypeError && error.message.includes('fetch')) finalReason = 'Не удалось связаться с сервером. Проверьте соединение, URL API, SSL и CORS настройки.';
+                        else finalReason = `Произошла ошибка (${error.message || 'Неизвестная ошибка'})`;
                         predictionDiv.innerHTML = `
                             <p style="color: red;">${finalReason}. Пожалуйста, попробуйте позже.</p>
                         `;
                         predictionDiv.style.display = 'block';
                     }
+                    // Если ошибка timeoutId все еще тут - это точно кэш или внешняя проблема
                 }
             }
 
