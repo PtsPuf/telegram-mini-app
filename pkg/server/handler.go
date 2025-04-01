@@ -29,13 +29,13 @@ var (
 func NewMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
-	// Serve static files - ИСПОЛЬЗУЕМ "static"
+	// Serve static files - БЕЗ AddHeaders
 	fs := http.FileServer(http.Dir("static"))
 	mux.Handle("/static/", http.StripPrefix("/static/", fs))
 	mux.Handle("/", fs) // Отдаем index.html и другие файлы из static
 
-	// Handle prediction endpoint
-	mux.HandleFunc("/prediction", HandlePrediction)
+	// Handle prediction endpoint - ПРИМЕНЯЕМ AddHeaders ТОЛЬКО ЗДЕСЬ
+	mux.Handle("/prediction", AddHeaders(http.HandlerFunc(HandlePrediction)))
 
 	return mux
 }
@@ -53,7 +53,7 @@ func SetupAndRunServer() {
 
 	serverInstance = &http.Server{
 		Addr:         ":" + port,
-		Handler:      AddHeaders(mux),
+		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 20 * time.Second,
 	}
@@ -72,25 +72,28 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	mux := NewMux()
 
 	// Применяем заголовки и обрабатываем запрос
-	AddHeaders(mux).ServeHTTP(w, r)
+	mux.ServeHTTP(w, r)
 }
 
-// AddHeaders adds security and caching headers to all responses
+// AddHeaders добавляет CORS и другие заголовки ТОЛЬКО для обработчиков API
 func AddHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		log.Printf("[CORS Debug] Received Origin header: %s", origin)
+		log.Printf("[API CORS Debug] Path: %s, Received Origin header: %s", r.URL.Path, origin)
 
-		// Возвращаем проверку Origin + добавляем 'null'
+		// Проверяем Origin
 		allowedOrigin := "https://ptspuf.github.io"
 		isAllowed := false
-		if origin == allowedOrigin || origin == "null" { // Разрешаем конкретный домен или null
+		// Разрешаем конкретный домен, 'null' или ПУСТОЙ origin (т.к. он приходит пустым)
+		if origin == allowedOrigin || origin == "null" || origin == "" {
 			isAllowed = true
-			w.Header().Set("Access-Control-Allow-Origin", origin)
+			// Устанавливаем заголовок, только если Origin НЕ пустой (иначе не требуется)
+			if origin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Add("Vary", "Origin") // Vary нужен только если Allow-Origin не всегда *
+			}
 		} else {
-			// Можно временно оставить '*', если вы тестируете с других источников
-			// w.Header().Set("Access-Control-Allow-Origin", "*")
-			log.Printf("[CORS Warning] Request origin '%s' is not allowed.", origin)
+			log.Printf("[API CORS Warning] Request origin '%s' is not allowed for API.", origin)
 		}
 
 		// Устанавливаем остальные CORS заголовки, ТОЛЬКО если источник разрешен
@@ -99,42 +102,41 @@ func AddHeaders(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Max-Age", "3600")
-			w.Header().Add("Vary", "Origin") // Vary нужен только если Allow-Origin не всегда *
 		} else if r.Method == "OPTIONS" {
-			// Для неразрешенных источников на OPTIONS отвечаем без CORS заголовков,
-			// чтобы браузер понял, что запрос не разрешен
-			log.Printf("[CORS Debug] Handling preflight OPTIONS request from DISALLOWED origin: %s", origin)
-			w.WriteHeader(http.StatusForbidden) // Или http.StatusOK без CORS заголовков
+			// Отвечаем на OPTIONS от неразрешенных источников
+			log.Printf("[API CORS Debug] Handling preflight OPTIONS from DISALLOWED origin: %s", origin)
+			w.WriteHeader(http.StatusForbidden)
 			return
 		}
 
 		// Handle preflight OPTIONS request (если источник был разрешен)
 		if r.Method == "OPTIONS" && isAllowed {
-			log.Printf("[CORS Debug] Handling preflight OPTIONS request from allowed origin: %s", origin)
+			log.Printf("[API CORS Debug] Handling preflight OPTIONS from allowed origin: %s", origin)
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 
 		// Если источник не разрешен и это не OPTIONS, прерываем обработку
 		if !isAllowed && r.Method != "OPTIONS" {
-			log.Printf("[CORS Error] Blocking request from disallowed origin: %s for path: %s", origin, r.URL.Path)
+			log.Printf("[API CORS Error] Blocking API request from disallowed origin: %s", origin)
 			http.Error(w, "CORS Origin Not Allowed", http.StatusForbidden)
 			return
 		}
 
-		// ... (Установка остальных заголовков Security, Cache-Control) ...
+		// Устанавливаем остальные заголовки (Security, Cache-Control)
+		// Эти заголовки можно применять и к API
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		// CSP можно оставить или сделать менее строгим для API, если нужно
 		w.Header().Set("Content-Security-Policy", "default-src 'self' https://telegram.org; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://telegram.org;")
 		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
 
-		// !!! ДОБАВЛЯЕМ ЛОГ ПЕРЕД ВЫЗОВОМ next.ServeHTTP !!!
-		log.Printf("[AddHeaders Debug] About to call next.ServeHTTP for %s %s (Origin: %s, isAllowed: %t)", r.Method, r.URL.Path, origin, isAllowed)
+		log.Printf("[API AddHeaders Debug] Calling next.ServeHTTP for API request (Origin: %s, isAllowed: %t)", origin, isAllowed)
 		next.ServeHTTP(w, r)
 	})
 }
