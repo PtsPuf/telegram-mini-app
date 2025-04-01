@@ -81,32 +81,44 @@ func AddHeaders(next http.Handler) http.Handler {
 		origin := r.Header.Get("Origin")
 		log.Printf("[CORS Debug] Received Origin header: %s", origin)
 
-		// !!! ВРЕМЕННО РАЗРЕШАЕМ ВСЕ ИСТОЧНИКИ ДЛЯ ДИАГНОСТИКИ CORS !!!
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		log.Println("[CORS Debug] Set Access-Control-Allow-Origin: * (DEBUGGING)")
-
-		/* --- Старая проверка Origin (закомментирована для теста) ---
+		// Возвращаем проверку Origin + добавляем 'null'
 		allowedOrigin := "https://ptspuf.github.io"
-		if origin == allowedOrigin {
-			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+		isAllowed := false
+		if origin == allowedOrigin || origin == "null" { // Разрешаем конкретный домен или null
+			isAllowed = true
+			w.Header().Set("Access-Control-Allow-Origin", origin)
 		} else {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			log.Printf("[CORS Warning] Request origin '%s' is not '%s'. Allowing '*' for now.", origin, allowedOrigin)
+			// Можно временно оставить '*', если вы тестируете с других источников
+			// w.Header().Set("Access-Control-Allow-Origin", "*")
+			log.Printf("[CORS Warning] Request origin '%s' is not allowed.", origin)
 		}
-		*/
 
-		// Остальные CORS заголовки
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, HEAD")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		w.Header().Set("Access-Control-Max-Age", "3600")
+		// Устанавливаем остальные CORS заголовки, ТОЛЬКО если источник разрешен
+		if isAllowed {
+			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, HEAD")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Max-Age", "3600")
+			w.Header().Add("Vary", "Origin") // Vary нужен только если Allow-Origin не всегда *
+		} else if r.Method == "OPTIONS" {
+			// Для неразрешенных источников на OPTIONS отвечаем без CORS заголовков,
+			// чтобы браузер понял, что запрос не разрешен
+			log.Printf("[CORS Debug] Handling preflight OPTIONS request from DISALLOWED origin: %s", origin)
+			w.WriteHeader(http.StatusForbidden) // Или http.StatusOK без CORS заголовков
+			return
+		}
 
-		w.Header().Add("Vary", "Origin")
-
-		// Handle preflight OPTIONS request
-		if r.Method == "OPTIONS" {
-			log.Printf("[CORS Debug] Handling preflight OPTIONS request from origin: %s", origin)
+		// Handle preflight OPTIONS request (если источник был разрешен)
+		if r.Method == "OPTIONS" && isAllowed {
+			log.Printf("[CORS Debug] Handling preflight OPTIONS request from allowed origin: %s", origin)
 			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Если источник не разрешен и это не OPTIONS, прерываем обработку
+		if !isAllowed && r.Method != "OPTIONS" {
+			log.Printf("[CORS Error] Blocking request from disallowed origin: %s for path: %s", origin, r.URL.Path)
+			http.Error(w, "CORS Origin Not Allowed", http.StatusForbidden)
 			return
 		}
 
