@@ -133,6 +133,8 @@ func AddHeaders(next http.Handler) http.Handler {
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
 
+		// !!! ДОБАВЛЯЕМ ЛОГ ПЕРЕД ВЫЗОВОМ next.ServeHTTP !!!
+		log.Printf("[AddHeaders Debug] About to call next.ServeHTTP for %s %s (Origin: %s, isAllowed: %t)", r.Method, r.URL.Path, origin, isAllowed)
 		next.ServeHTTP(w, r)
 	})
 }

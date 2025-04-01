@@ -83,40 +83,7 @@
             tg.ready();
         }
 
-        // Глобальные переменные для управления запросами
-        let currentController = null; // Оставим для совместимости, но не будем использовать
-
-        // !!! РАДИКАЛЬНО УПРОЩАЕМ FETCH - УБИРАЕМ ТАЙМАУТ И ABORTCONTROLLER !!!
-        async function fetchWithTimeout(url, options) { 
-            console.log(`[DEBUG][Simplified Fetch] Начинаем запрос на ${url}`);
-            try {
-                // Оставляем только базовые заголовки
-                const fetchOptions = {
-                    ...options,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        // Убраны Cache-Control и т.д. для максимального упрощения
-                        // Убраны credentials для упрощения
-                    }
-                };
-                console.log('[DEBUG][Simplified Fetch] Опции запроса:', fetchOptions);
-                const response = await fetch(url, fetchOptions);
-
-                console.log(`[DEBUG][Simplified Fetch] Получен ответ от ${url}, статус: ${response.status}`);
-
-                if (!response.ok) {
-                    const errorText = await response.text().catch(() => 'Не удалось прочитать тело ошибки');
-                    console.error(`[DEBUG][Simplified Fetch] Ошибка HTTP ${response.status} от ${url}. Тело: ${errorText}`);
-                    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-                }
-                return response;
-            } catch (error) {
-                console.error(`[DEBUG][Simplified Fetch] Сетевая или другая ошибка при запросе на ${url}:`, error.name, error.message, error);
-                throw error; // Перевыбрасываем ошибку
-            }
-            // finally не нужен, т.к. нет AbortController
-        }
+        // УБИРАЕМ fetchWithTimeout ПОЛНОСТЬЮ
 
         async function getPrediction() {
             const name = document.getElementById('name').value;
@@ -149,62 +116,58 @@
                 partnerBirth
             };
 
-            console.log('Отправляем запрос:', data);
+            console.log('Отправляем запрос (ОДНА ПОПЫТКА):', data);
 
-            const baseApiUrl = 'https://telegram-mini-app.onrender.com/prediction';
-            console.log(`[DEBUG] Базовый API URL: ${baseApiUrl}`);
+            const apiUrl = 'https://telegram-mini-app.onrender.com/prediction';
+            console.log(`[DEBUG][Single Attempt] API URL: ${apiUrl}`);
 
-            let retries = 3;
-            while (retries > 0) {
-                const attempt = 4 - retries;
-                // Убираем cache busting, так как упрощаем всё
-                // const apiUrlWithCacheBust = baseApiUrl + '?t=' + Date.now(); 
-                const apiUrlFinal = baseApiUrl; 
+            // --- НАЧАЛО УПРОЩЕННОГО ЗАПРОСА (ОДНА ПОПЫТКА) ---
+            try {
+                console.log(`[DEBUG][Single Attempt] Вызов fetch для URL: ${apiUrl}...`);
+                const response = await fetch(apiUrl, { 
+                    method: 'POST',
+                    headers: { // Минимально необходимые заголовки
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                    // Убраны credentials и cache busting для теста
+                });
+                console.log(`[DEBUG][Single Attempt] fetch завершен. Статус: ${response.status}`);
 
-                try {
-                    console.log(`[DEBUG][Simplified] Попытка ${attempt} из 3. Вызов fetch для URL: ${apiUrlFinal}...`);
-                    // Вызываем УПРОЩЕННУЮ функцию fetch
-                    const response = await fetchWithTimeout(apiUrlFinal, { 
-                        method: 'POST',
-                        body: JSON.stringify(data)
-                    });
-                    console.log(`[DEBUG][Simplified] Попытка ${attempt}: fetch успешно завершен.`);
-
-                    const result = await response.json();
-                    console.log(`[DEBUG][Simplified] Попытка ${attempt}: Ответ сервера успешно разобран (JSON).`);
-                    predictionDiv.innerHTML = `
-                        <h3>Ваше предсказание:</h3>
-                        <p>${result.Text}</p>
-                        ${result.Images && result.Images.length > 0 ? 
-                            result.Images.map((imgData, index) => 
-                                `<img src="data:image/jpeg;base64,${imgData}" alt="Визуализация ${index + 1}">`
-                            ).join('') 
-                            : ''}
-                    `;
-                    predictionDiv.style.display = 'block';
-                    break;
-                } catch (error) {
-                    // Упрощенная обработка ошибок без таймаута
-                    console.error(`[DEBUG][Simplified] Попытка ${attempt}: Ошибка внутри цикла fetch/retry:`, error.name, error.message, error);
-                    retries--;
-                    if (retries > 0) {
-                         let reason = error.message;
-                         if (error instanceof TypeError) reason = 'Сетевая ошибка (проверьте URL, CORS, SSL)';
-                         else reason = `Неожиданная ошибка (${error.message})`;
-                        console.log(`[DEBUG][Simplified] Попытка ${attempt} не удалась (${reason}). Повторная попытка через 2 секунды. Осталось попыток: ${retries}`);
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-                    } else {
-                        console.error('[DEBUG][Simplified] Попытки исчерпаны. Отображение финальной ошибки.');
-                         let finalReason = error.message;
-                         if (error instanceof TypeError) finalReason = 'Не удалось связаться с сервером. Проверьте соединение, URL API, SSL и CORS настройки.';
-                         else finalReason = `Произошла ошибка (${error.message || 'Неизвестная ошибка'})`;
-                        predictionDiv.innerHTML = `
-                            <p style="color: red;">${finalReason}. Пожалуйста, попробуйте позже.</p>
-                        `;
-                        predictionDiv.style.display = 'block';
-                    }
+                if (!response.ok) {
+                    const errorText = await response.text().catch(() => 'Не удалось прочитать тело ошибки');
+                    console.error(`[DEBUG][Single Attempt] Ошибка HTTP ${response.status}. Тело: ${errorText}`);
+                    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
                 }
+
+                const result = await response.json();
+                console.log(`[DEBUG][Single Attempt] Ответ сервера успешно разобран (JSON).`);
+                predictionDiv.innerHTML = `
+                    <h3>Ваше предсказание:</h3>
+                    <p>${result.Text}</p>
+                    ${result.Images && result.Images.length > 0 ? 
+                        result.Images.map((imgData, index) => 
+                            `<img src="data:image/jpeg;base64,${imgData}" alt="Визуализация ${index + 1}">`
+                        ).join('') 
+                        : ''}
+                `;
+                predictionDiv.style.display = 'block';
+
+            } catch (error) {
+                 // Упрощенная обработка ошибок
+                 console.error(`[DEBUG][Single Attempt] Ошибка fetch:`, error.name, error.message, error);
+                 let finalReason = error.message;
+                 if (error instanceof TypeError) finalReason = 'Не удалось связаться с сервером (NetworkError). Проверьте CORS и URL.';
+                 else finalReason = `Произошла ошибка (${error.message || 'Неизвестная ошибка'})`;
+                 predictionDiv.innerHTML = `
+                     <p style="color: red;">${finalReason}. Пожалуйста, попробуйте позже.</p>
+                 `;
+                 predictionDiv.style.display = 'block';
             }
+            // --- КОНЕЦ УПРОЩЕННОГО ЗАПРОСА ---
+
+            // Код после единственной попытки
             button.disabled = false;
             preloader.style.display = 'none';
         }
