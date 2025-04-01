@@ -3,14 +3,16 @@
   "builds": [
     {
       "src": "api/index.go",
-      "use": "@vercel/go",
-      "config": {
-      }
+      "use": "@vercel/go"
+    },
+    {
+      "src": "public/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
     {
-      "src": "/(.*)",
+      "src": "/api/(.*)",
       "dest": "/api/index.go"
     }
   ]

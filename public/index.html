@@ -144,6 +144,9 @@
         }
 
         async function getPrediction() {
+            // Явно объявляем timeoutHandle здесь, чтобы избежать ReferenceError из-за кэша
+            let timeoutHandle = null; 
+            
             const name = document.getElementById('name').value;
             const birthDate = document.getElementById('birthDate').value;
             const question = document.getElementById('question').value;
